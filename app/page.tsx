@@ -14,11 +14,12 @@ export default function HomePage() {
         placeItems: 'center',
         padding: 24,
         fontFamily: 'system-ui, sans-serif',
+        color: '#fff',
       }}
     >
       <div style={{ width: '100%', maxWidth: 720 }}>
         <h1 style={{ fontSize: 34, marginBottom: 8 }}>Conceito Barbearia</h1>
-        <p style={{ opacity: 0.85, marginBottom: 24 }}>
+        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 24 }}>
           Agende seu horário em poucos cliques.
         </p>
 

@@ -122,7 +122,7 @@ export default function MeusAgendamentosPage() {
   return (
     <main className="min-h-screen px-6 py-12">
       <div className="mx-auto w-full max-w-3xl">
-        <h1 className="text-4xl font-bold tracking-tight">Meus agendamentos</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-white">Meus agendamentos</h1>
         <p className="mt-2 text-white/70">
           Digite seu celular com DDD para consultar e cancelar horários.
         </p>
@@ -148,7 +148,7 @@ export default function MeusAgendamentosPage() {
 
             <a
               href="/"
-              className="rounded-xl border border-white/10 px-5 py-3 font-semibold text-white/90 hover:bg-white/5"
+              className="rounded-xl border border-zinc-700 px-5 py-3 font-semibold text-zinc-200 hover:bg-zinc-800"
             >
               Voltar
             </a>
