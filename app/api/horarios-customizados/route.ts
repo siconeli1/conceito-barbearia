@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 
+function getHorariosErrorMessage(error: { code?: string; message: string }) {
+  if (error.code === "42P01") {
+    return 'Tabela "horarios_customizados" nao encontrada. Execute o arquivo create_horarios_table.sql no Supabase.'
+  }
+
+  return error.message
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const data = searchParams.get("data")
 
     if (!data) {
-      return NextResponse.json(
-        { erro: "Data é obrigatória" },
-        { status: 400 }
-      )
+      return NextResponse.json({ erro: "Data obrigatoria." }, { status: 400 })
     }
 
     const { data: horarios, error } = await supabase
@@ -21,7 +26,7 @@ export async function GET(req: Request) {
 
     if (error) {
       return NextResponse.json(
-        { erro: error.message },
+        { erro: getHorariosErrorMessage(error) },
         { status: 500 }
       )
     }
@@ -29,7 +34,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ horarios: horarios || [] })
   } catch {
     return NextResponse.json(
-      { erro: "Erro interno ao listar horários" },
+      { erro: "Erro interno ao listar horarios." },
       { status: 500 }
     )
   }
@@ -42,30 +47,36 @@ export async function POST(req: Request) {
 
     if (!data || !hora_inicio || !hora_fim) {
       return NextResponse.json(
-        { erro: "Data, hora de início e hora de fim são obrigatórias" },
+        { erro: "Data, hora de inicio e hora de fim sao obrigatorias." },
         { status: 400 }
       )
     }
 
     if (hora_inicio >= hora_fim) {
       return NextResponse.json(
-        { erro: "Hora de fim deve ser após hora de início" },
+        { erro: "Hora de fim deve ser apos hora de inicio." },
         { status: 400 }
       )
     }
 
-    // Verifica se já existe
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("horarios_customizados")
       .select("id")
       .eq("data", data)
       .eq("hora_inicio", hora_inicio)
       .eq("hora_fim", hora_fim)
-      .single()
+      .maybeSingle()
+
+    if (existingError) {
+      return NextResponse.json(
+        { erro: getHorariosErrorMessage(existingError) },
+        { status: 500 }
+      )
+    }
 
     if (existing) {
       return NextResponse.json(
-        { erro: "Este horário já foi cadastrado" },
+        { erro: "Este horario ja foi cadastrado." },
         { status: 400 }
       )
     }
@@ -78,7 +89,7 @@ export async function POST(req: Request) {
 
     if (error) {
       return NextResponse.json(
-        { erro: error.message },
+        { erro: getHorariosErrorMessage(error) },
         { status: 500 }
       )
     }
@@ -86,7 +97,7 @@ export async function POST(req: Request) {
     return NextResponse.json(horario)
   } catch {
     return NextResponse.json(
-      { erro: "Erro interno ao criar horário" },
+      { erro: "Erro interno ao criar horario." },
       { status: 500 }
     )
   }
@@ -98,10 +109,7 @@ export async function DELETE(req: Request) {
     const { id } = body
 
     if (!id) {
-      return NextResponse.json(
-        { erro: "ID do horário é obrigatório" },
-        { status: 400 }
-      )
+      return NextResponse.json({ erro: "ID do horario obrigatorio." }, { status: 400 })
     }
 
     const { error } = await supabase
@@ -111,7 +119,7 @@ export async function DELETE(req: Request) {
 
     if (error) {
       return NextResponse.json(
-        { erro: error.message },
+        { erro: getHorariosErrorMessage(error) },
         { status: 500 }
       )
     }
@@ -119,7 +127,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true })
   } catch {
     return NextResponse.json(
-      { erro: "Erro interno ao deletar horário" },
+      { erro: "Erro interno ao deletar horario." },
       { status: 500 }
     )
   }
