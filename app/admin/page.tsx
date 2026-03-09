@@ -228,8 +228,8 @@ export default function AdminPage() {
 
       if (!res.ok) {
         // Se há agendamentos ativos, mostrar mensagem especial
-        if (json.agendamentos) {
-          setErro(`${json.erro}\n\nAgendamentos ativos:`)
+        if ((json as Record<string, unknown>).agendamentos) {
+          setErro(`${(json as Record<string, unknown>).erro}\n\nAgendamentos ativos:`)
           // Aqui você poderia mostrar os agendamentos em uma lista
           return
         }
