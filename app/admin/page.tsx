@@ -25,6 +25,8 @@ type HorarioCustomizado = {
   data: string
   hora_inicio: string
   hora_fim: string
+  nome_cliente: string | null
+  celular_cliente: string | null
 }
 
 type ApiJson = unknown
@@ -172,9 +174,18 @@ export default function AdminPage() {
     const data = (form.elements.namedItem("data") as HTMLInputElement).value
     const hora_inicio = (form.elements.namedItem("hora_inicio") as HTMLInputElement).value
     const hora_fim = (form.elements.namedItem("hora_fim") as HTMLInputElement).value
-    const dia_inteiro = (form.elements.namedItem("dia_inteiro") as HTMLInputElement).checked
-    const nao_aceitar_mais = (form.elements.namedItem("nao_aceitar_mais") as HTMLInputElement).checked
     const motivo = (form.elements.namedItem("motivo") as HTMLInputElement).value
+    
+    // Pega o tipo de bloqueio selecionado do radio button
+    const tipo_bloqueio_input = (form.elements.namedItem("tipo_bloqueio") as RadioNodeList)
+    let tipo_bloqueio: 'horario' | 'dia_inteiro' | 'nao_aceitar_mais' = 'horario'
+    
+    if (tipo_bloqueio_input && tipo_bloqueio_input.length > 0) {
+      const selecionado = (tipo_bloqueio_input as any).value
+      if (selecionado === 'dia_inteiro' || selecionado === 'nao_aceitar_mais') {
+        tipo_bloqueio = selecionado
+      }
+    }
 
     setErro(null)
     setMensagem(null)
@@ -185,13 +196,7 @@ export default function AdminPage() {
     }
 
     // Validações específicas por tipo de bloqueio
-    let tipo_bloqueio: 'horario' | 'dia_inteiro' | 'nao_aceitar_mais' = 'horario'
-
-    if (dia_inteiro) {
-      tipo_bloqueio = 'dia_inteiro'
-    } else if (nao_aceitar_mais) {
-      tipo_bloqueio = 'nao_aceitar_mais'
-    } else {
+    if (tipo_bloqueio === 'horario') {
       // Bloqueio de horário específico
       if (!hora_inicio) {
         setErro("Informe a hora de inicio.")
@@ -280,12 +285,19 @@ export default function AdminPage() {
     const data = (form.elements.namedItem("data-horario") as HTMLInputElement).value
     const hora_inicio = (form.elements.namedItem("hora_inicio") as HTMLInputElement).value
     const hora_fim = (form.elements.namedItem("hora_fim") as HTMLInputElement).value
+    const nome_cliente = (form.elements.namedItem("nome_cliente") as HTMLInputElement).value
+    const celular_cliente = (form.elements.namedItem("celular_cliente") as HTMLInputElement).value
 
     setErro(null)
     setMensagem(null)
 
     if (!data || !hora_inicio || !hora_fim) {
       setErro("Informe data, hora de inicio e hora de fim.")
+      return
+    }
+
+    if (!nome_cliente) {
+      setErro("Informe o nome do cliente.")
       return
     }
 
@@ -300,7 +312,7 @@ export default function AdminPage() {
       const res = await fetch("/api/horarios-customizados", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, hora_inicio, hora_fim }),
+        body: JSON.stringify({ data, hora_inicio, hora_fim, nome_cliente, celular_cliente: celular_cliente || null }),
       })
 
       const json = await lerRespostaJson(res)
@@ -311,7 +323,9 @@ export default function AdminPage() {
 
       setMensagem("Horario criado com sucesso!")
       form.reset()
+      setDataHorarios(data)
       await carregarHorarios(data)
+      await carregarAgenda(data)
     } catch (error: unknown) {
       setErro(error instanceof Error ? error.message : "Erro ao criar horario.")
     } finally {
@@ -497,7 +511,18 @@ export default function AdminPage() {
                 <div className="space-y-3">
                   <label className="flex items-center gap-2 text-sm text-zinc-200">
                     <input
-                      name="dia_inteiro"
+                      name="tipo_bloqueio"
+                      type="radio"
+                      value="horario"
+                      defaultChecked
+                      className="w-4 h-4"
+                    />
+                    Bloquear horário específico
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm text-zinc-200">
+                    <input
+                      name="tipo_bloqueio"
                       type="radio"
                       value="dia_inteiro"
                       className="w-4 h-4"
@@ -507,23 +532,12 @@ export default function AdminPage() {
 
                   <label className="flex items-center gap-2 text-sm text-zinc-200">
                     <input
-                      name="nao_aceitar_mais"
+                      name="tipo_bloqueio"
                       type="radio"
                       value="nao_aceitar_mais"
                       className="w-4 h-4"
                     />
                     Não aceitar mais horários (mantém agendamentos existentes, bloqueia horários vazios)
-                  </label>
-
-                  <label className="flex items-center gap-2 text-sm text-zinc-200">
-                    <input
-                      name="horario"
-                      type="radio"
-                      value="horario"
-                      defaultChecked
-                      className="w-4 h-4"
-                    />
-                    Bloquear horário específico
                   </label>
                 </div>
 
@@ -665,11 +679,38 @@ export default function AdminPage() {
                   </label>
                   <input
                     id="data-horario"
-                    name="data"
+                    name="data-horario"
                     type="date"
                     required
                     value={dataHorarios}
                     onChange={(e) => setDataHorarios(e.target.value)}
+                    className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="nome-cliente" className="block text-sm text-zinc-200 mb-2">
+                    Nome do cliente (obrigatório)
+                  </label>
+                  <input
+                    id="nome-cliente"
+                    name="nome_cliente"
+                    type="text"
+                    placeholder="Ex: João Silva"
+                    required
+                    className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="celular-cliente" className="block text-sm text-zinc-200 mb-2">
+                    Celular do cliente (opcional)
+                  </label>
+                  <input
+                    id="celular-cliente"
+                    name="celular_cliente"
+                    type="text"
+                    placeholder="Ex: 11999999999"
                     className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
                   />
                 </div>
@@ -724,11 +765,17 @@ export default function AdminPage() {
               {horarios.map((h) => (
                 <div
                   key={h.id}
-                  className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-b border-zinc-700 py-4 last:border-0"
+                  className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 border-b border-zinc-700 py-4 last:border-0"
                 >
-                  <p className="font-semibold">
-                    {formatarHora(h.hora_inicio)} - {formatarHora(h.hora_fim)}
-                  </p>
+                  <div>
+                    <p className="font-semibold">
+                      {formatarHora(h.hora_inicio)} - {formatarHora(h.hora_fim)}
+                    </p>
+                    <p className="text-sm text-zinc-300 mt-1">{h.nome_cliente || 'Sem nome'}</p>
+                    {h.celular_cliente && (
+                      <p className="text-sm text-zinc-500">{h.celular_cliente}</p>
+                    )}
+                  </div>
 
                   <button
                     onClick={() => deletarHorario(h.id)}

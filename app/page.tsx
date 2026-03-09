@@ -1,73 +1,91 @@
-import Link from 'next/link'
+import Link from "next/link"
+import Image from "next/image"
 
-const WHATSAPP_NUMBER = '5517999999999' // <-- troque para o número real (DDI+DDD+número)
-const WHATSAPP_MSG = encodeURIComponent('Olá! Quero agendar um horário na Conceito Barbearia.')
-
-export default function HomePage() {
-  const whatsappLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MSG}`
-
+export default function Home() {
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-        fontFamily: 'system-ui, sans-serif',
-        color: '#fff',
-      }}
-    >
-      <div style={{ width: '100%', maxWidth: 720 }}>
-        <h1 style={{ fontSize: 34, marginBottom: 8 }}>Conceito Barbearia</h1>
-        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 24 }}>
-          Agende seu horário em poucos cliques.
-        </p>
+    <main className="min-h-screen bg-black text-white">
+      {/* Hero Section */}
+      <div className="border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
+          <div className="mb-12 flex justify-center">
+            <Image
+              src="/logo.png"
+              alt="Conceito Barbearia"
+              width={550}
+              height={700}
+              priority
+              className="h-auto w-auto max-w-md sm:max-w-2xl"
+            />
+          </div>
+          <p className="text-lg text-gray-400 mb-12 max-w-2xl mx-auto">
+            Excelência e sofisticação em cada detalhe
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/agendar"
+              className="px-8 py-3 bg-white text-black font-semibold hover:bg-gray-200 transition-colors"
+            >
+              Agendar Horário
+            </Link>
+            <Link
+              href="/meus-agendamentos"
+              className="px-8 py-3 border border-white text-white hover:bg-white/10 transition-colors"
+            >
+              Meus Agendamentos
+            </Link>
+          </div>
+        </div>
+      </div>
 
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Link
-            href="/agendar"
-            style={{
-              padding: '12px 16px',
-              borderRadius: 10,
-              background: '#111',
-              color: '#fff',
-              textDecoration: 'none',
-              fontWeight: 700,
-            }}
-          >
-            Agendar horário
-          </Link>
+      {/* Features Section */}
+      <div className="border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="grid md:grid-cols-3 gap-12">
+            <div className="text-center">
+              <div className="inline-block w-12 h-12 border border-white mb-6 flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Rápido</h3>
+              <p className="text-gray-400">Agende em segundos</p>
+            </div>
 
-          <a
-            href={whatsappLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: '12px 16px',
-              borderRadius: 10,
-              background: '#22c55e', // verde forte
-              color: '#ffffff',
-              textDecoration: 'none',
-              fontWeight: 700,
-              border: '1px solid rgba(255,255,255,0.12)',
-            }}
-          >
-            Falar no WhatsApp
-          </a>
+            <div className="text-center">
+              <div className="inline-block w-12 h-12 border border-white mb-6 flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Seguro</h3>
+              <p className="text-gray-400">Seus dados protegidos</p>
+            </div>
 
-          <Link
-            href="/meus-agendamentos"
-            style={{
-              padding: '12px 16px',
-              borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.25)',
-              color: '#fff',
-              textDecoration: 'none',
-              fontWeight: 700,
-            }}
-          >
-            Meus agendamentos
-          </Link>
+            <div className="text-center">
+              <div className="inline-block w-12 h-12 border border-white mb-6 flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Flexível</h3>
+              <p className="text-gray-400">Cancele quando precisar</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hours Section */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <h2 className="text-3xl font-semibold text-center mb-12">Horários</h2>
+        <div className="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto text-center">
+          <div className="border-l border-white/20 pl-8">
+            <p className="text-gray-400 mb-2">Segunda a Sexta</p>
+            <p className="text-2xl font-semibold">08:00 - 18:00</p>
+          </div>
+          <div className="border-l border-white/20 pl-8">
+            <p className="text-gray-400 mb-2">Sábado</p>
+            <p className="text-2xl font-semibold">08:00 - 14:00</p>
+          </div>
         </div>
       </div>
     </main>

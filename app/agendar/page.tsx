@@ -5,7 +5,6 @@ import Link from "next/link"
 import { Slot, formatarData, converterParaISO, formatarCelular, isDateInPast, isDateBeyondLimit } from "../../lib/format"
 import { useDebounce } from "../../lib/hooks"
 
-// responses from the backend
 interface HorariosResponse {
   horarios?: Slot[]
   erro?: string
@@ -16,7 +15,6 @@ interface ReservaResponse {
   erro?: string
 }
 
-// consolidated form state handled by reducer
 interface FormState {
   nome: string
   celular: string
@@ -71,12 +69,7 @@ export default function AgendarPage() {
     erro: "",
   })
 
-  // derived validation flags
-  const dateInvalid =
-    form.erro.toLowerCase().includes("data") ||
-    form.erro.toLowerCase().includes("passado") ||
-    form.erro.toLowerCase().includes("intervalo")
-  const timeInvalid = form.erro.toLowerCase().includes("horário")
+  const dateInvalid = form.erro.toLowerCase().includes("data") || form.erro.toLowerCase().includes("passado") || form.erro.toLowerCase().includes("intervalo")
   const nameInvalid = form.erro.toLowerCase().includes("nome")
   const phoneInvalid = form.erro.toLowerCase().includes("celular")
 
@@ -104,253 +97,183 @@ export default function AgendarPage() {
   }, [])
 
   useEffect(() => {
-    const iso = converterParaISO(debouncedData)
-
-    if (iso) {
-      if (pastDate) {
-        dispatch({ type: "setErro", value: "Não é possível buscar horários no passado" })
-        setSlots([])
-        dispatch({ type: "setHorario", value: null })
-      } else if (outOfRange) {
-        dispatch({ type: "setErro", value: "Data fora do intervalo permitido (30 dias)" })
-        setSlots([])
-        dispatch({ type: "setHorario", value: null })
-      } else {
-        buscarHorarios(iso)
-      }
-    } else {
+    if (debouncedData && !pastDate && !outOfRange) {
+      buscarHorarios(debouncedData)
+    } else if (debouncedData) {
       setSlots([])
       dispatch({ type: "setHorario", value: null })
     }
-  }, [debouncedData, buscarHorarios, pastDate, outOfRange])
+  }, [debouncedData, pastDate, outOfRange, buscarHorarios])
 
-  const reservar = useCallback(async () => {
-    const iso = converterParaISO(data)
-    const pastDate = iso ? isDateInPast(iso) : false
-    const outOfRangeLocal = iso ? isDateBeyondLimit(iso, 30) : false
-
-    if (!iso) {
-      dispatch({ type: "setMsg", value: "" })
-      dispatch({ type: "setErro", value: "Informe uma data válida" })
-      return
-    }
-
-    if (pastDate || outOfRangeLocal) {
-      dispatch({ type: "setMsg", value: "" })
-      dispatch({ type: "setErro", value: "Não é possível agendar para esta data" })
-      return
-    }
-
-    if (!form.horarioSelecionado) {
-      dispatch({ type: "setMsg", value: "" })
-      dispatch({ type: "setErro", value: "Selecione um horário" })
-      return
-    }
-
-    if (!form.nome || !form.celular) {
-      dispatch({ type: "setMsg", value: "" })
-      dispatch({ type: "setErro", value: "Informe seu nome e celular" })
+  async function reservar() {
+    if (!form.nome || !form.celular || !form.horarioSelecionado || !data) {
+      dispatch({ type: "setErro", value: "Preencha todos os campos obrigatórios" })
       return
     }
 
     setLoading(true)
-    dispatch({ type: "setMsg", value: "" })
     dispatch({ type: "setErro", value: "" })
 
     try {
       const res = await fetch("/api/reservar", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: iso,
+          data,
           hora_inicio: form.horarioSelecionado,
           nome: form.nome,
-          celular: form.celular.replace(/\D/g, ""),
+          celular: form.celular,
         }),
       })
 
       const json: ReservaResponse = await res.json()
 
-      if (json.ok) {
-        dispatch({ type: "setMsg", value: "Agendamento realizado com sucesso!" })
-        dispatch({ type: "setHorario", value: null })
-        dispatch({ type: "setNome", value: "" })
-        dispatch({ type: "setCelular", value: "" })
-        buscarHorarios(iso)
-      } else {
-        dispatch({ type: "setErro", value: json.erro || "Erro ao agendar" })
+      if (!res.ok) {
+        dispatch({ type: "setErro", value: json.erro || "Erro ao fazer reserva" })
+        return
       }
+
+      dispatch({ type: "setMsg", value: "Agendamento realizado com sucesso!" })
+      dispatch({ type: "reset" })
+      setData("")
+      setSlots([])
     } catch {
-      dispatch({ type: "setErro", value: "Erro ao agendar" })
+      dispatch({ type: "setErro", value: "Erro ao conectar com o servidor" })
     } finally {
       setLoading(false)
     }
-  }, [data, form.horarioSelecionado, form.nome, form.celular, buscarHorarios])
-
-  // clear success message after a few seconds
-  useEffect(() => {
-    if (form.msg) {
-      const timer = setTimeout(() => dispatch({ type: "setMsg", value: "" }), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [form.msg])
+  }
 
   return (
-    <main className="min-h-screen bg-black text-white px-6 py-12">
-      <div className="mx-auto w-full max-w-4xl">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold tracking-tight text-white">Agendar horário</h1>
-          <p className="mt-3 text-zinc-200">
-            Escolha a data, selecione um horário disponível e preencha seus dados
-            para confirmar o atendimento.
-          </p>
+    <main className="min-h-screen bg-black text-white">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Header */}
+        <div className="text-center mb-12 border-b border-white/10 pb-12">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-6"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Voltar
+          </Link>
+          <h1 className="text-3xl sm:text-4xl font-bold mb-2">Agendar Horário</h1>
+          <p className="text-gray-400 text-lg">Escolha a data e horário</p>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 md:p-8 shadow-2xl">
-          <div className={`grid gap-8 md:grid-cols-[280px_1fr] ${
-            timeInvalid ? "border border-red-500 p-2 rounded" : ""
-          }`}>
-            <div>
-              <label htmlFor="data-input" className="mb-2 block text-sm font-medium text-zinc-200">
-                Data do atendimento
-              </label>
+        {/* Messages */}
+        {form.erro && (
+          <div className="mb-6 p-4 bg-red-950 border border-red-700 rounded">
+            <p className="text-red-300">{form.erro}</p>
+          </div>
+        )}
 
-              <input
-                id="data-input"
-                placeholder="dd/mm/aaaa"
-                value={data}
-                disabled={loading || carregandoHorarios}
-                onChange={(e) => setData(formatarData(e.target.value))}
-                className={`w-full rounded-xl border px-4 py-3 bg-zinc-900 text-white outline-none transition focus:border-green-500 ${
-                  dateInvalid ? "border-red-500" : "border-zinc-700"
-                } ${loading || carregandoHorarios ? "opacity-50 cursor-not-allowed" : ""}`}
-              />
-              {(pastDate || outOfRange) && (
-                <p className="mt-1 text-sm text-red-400">
-                  Não é possível agendar para esta data.
-                </p>
-              )}
+        {form.msg && (
+          <div className="mb-6 p-4 bg-green-950 border border-green-700 rounded">
+            <p className="text-green-300 font-medium">{form.msg}</p>
+          </div>
+        )}
 
-              <p className="mt-3 text-sm text-zinc-500">
-                Exemplo: 07/03/2026
-              </p>
-            </div>
-
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Horários disponíveis</h2>
-
-                {carregandoHorarios && (
-                  <span className="text-sm text-zinc-200">Carregando...</span>
-                )}
+        {/* Form */}
+        <div className="space-y-8">
+          {/* Date */}
+          <div>
+            <label className="block text-sm font-semibold text-white mb-4">Data</label>
+            <input
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              className={`w-full px-4 py-3 bg-white/5 border rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors ${
+                dateInvalid ? 'border-red-600' : 'border-white/20'
+              }`}
+              min={new Date().toISOString().split('T')[0]}
+            />
+            {data && (
+              <div className="text-sm text-gray-400 mt-2">
+                {pastDate && <span className="text-red-400">Data no passado</span>}
+                {outOfRange && <span className="text-red-400">Data fora do intervalo (máx. 30 dias)</span>}
+                {!pastDate && !outOfRange && <span className="text-green-400">✓ Data válida</span>}
               </div>
+            )}
+          </div>
 
-              {!carregandoHorarios && data && slots.length === 0 && !form.erro && (
-                <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-900/60 px-4 py-6 text-sm text-zinc-200">
-                  Nenhum horário disponível para esta data.
-                </div>
-              )}
-
-              {slots.length > 0 && (
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-                  {slots.map((s) => {
-                    const ativo = form.horarioSelecionado === s.hora_inicio
-
-                    return (
-                      <button
-                        key={s.hora_inicio}
-                        onClick={() => dispatch({ type: "setHorario", value: s.hora_inicio })}
-                        className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                          ativo
-                            ? "border-green-500 bg-green-500 text-white shadow-lg shadow-green-500/20"
-                            : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800"
-                        }`}
-                      >
-                        {s.hora_inicio}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+          {/* Time */}
+          <div>
+            <label className="block text-sm font-semibold text-white mb-4">Horário</label>
+            {carregandoHorarios && <p className="text-gray-400">Carregando horários...</p>}
+            {!carregandoHorarios && slots.length === 0 && data && !pastDate && !outOfRange && (
+              <p className="text-gray-400">Nenhum horário disponível para esta data</p>
+            )}
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+              {slots.map((slot) => (
+                <button
+                  key={slot.hora_inicio}
+                  onClick={() => dispatch({ type: "setHorario", value: slot.hora_inicio })}
+                  className={`p-2 border text-center font-medium text-sm transition-colors ${
+                    form.horarioSelecionado === slot.hora_inicio
+                      ? 'border-white bg-white text-black'
+                      : 'border-white/30 hover:border-white'
+                  }`}
+                >
+                  {slot.hora_inicio}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="my-8 h-px bg-zinc-800" />
-
-          <div>
-            <h2 className="mb-5 text-lg font-semibold">Seus dados</h2>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label htmlFor="nome-input" className="mb-2 block text-sm font-medium text-zinc-200">
-                  Nome
-                </label>
-                <input
-                  id="nome-input"
-                  placeholder="Seu nome completo"
-                  value={form.nome}
-                  disabled={loading}
-                  onChange={(e) => dispatch({ type: "setNome", value: e.target.value })}
-                  className={`w-full rounded-xl border px-4 py-3 bg-zinc-900 text-white outline-none transition focus:border-green-500 ${
-                    nameInvalid ? "border-red-500" : "border-zinc-700"
-                  } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="celular-input" className="mb-2 block text-sm font-medium text-zinc-200">
-                  Celular
-                </label>
-                <input
-                  id="celular-input"
-                  placeholder="(00) 00000-0000"
-                  value={form.celular}
-                  disabled={loading}
-                  onChange={(e) => dispatch({ type: "setCelular", value: formatarCelular(e.target.value) })}
-                  className={`w-full rounded-xl border px-4 py-3 bg-zinc-900 text-white outline-none transition focus:border-green-500 ${
-                    phoneInvalid ? "border-red-500" : "border-zinc-700"
-                  } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
-                />
-              </div>
+          {/* Personal Data */}
+          <div className="border-t border-white/10 pt-8">
+            <label className="block text-sm font-semibold text-white mb-4">Dados Pessoais</label>
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={form.nome}
+                onChange={(e) => dispatch({ type: "setNome", value: e.target.value })}
+                placeholder="Nome completo"
+                className={`w-full px-4 py-3 bg-white/5 border rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors ${
+                  nameInvalid ? 'border-red-600' : 'border-white/20'
+                }`}
+              />
+              <input
+                type="tel"
+                value={form.celular}
+                onChange={(e) => dispatch({ type: "setCelular", value: formatarCelular(e.target.value) })}
+                placeholder="(11) 99999-9999"
+                maxLength={15}
+                className={`w-full px-4 py-3 bg-white/5 border rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors ${
+                  phoneInvalid ? 'border-red-600' : 'border-white/20'
+                }`}
+              />
             </div>
+          </div>
 
-            {form.horarioSelecionado && (
-              <div className="mt-5 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-                Horário selecionado: <strong>{form.horarioSelecionado}</strong>
+          {/* Summary */}
+          {form.horarioSelecionado && form.nome && form.celular && data && (
+            <div className="border-t border-white/10 pt-8">
+              <div className="space-y-2 text-sm text-gray-400 mb-6">
+                <div className="flex justify-between">
+                  <span>Data:</span>
+                  <span className="text-white">{formatarData(data)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Horário:</span>
+                  <span className="text-white">{form.horarioSelecionado}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Nome:</span>
+                  <span className="text-white">{form.nome}</span>
+                </div>
               </div>
-            )}
-
-            {form.erro && (
-              <div className="mt-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                {form.erro}
-              </div>
-            )}
-
-            {form.msg && (
-              <div className="mt-5 rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-                {form.msg}
-              </div>
-            )}
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={reservar}
-                disabled={loading || pastDate}
-                className="rounded-xl bg-green-500 px-6 py-3 font-semibold text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={loading}
+                className="w-full px-6 py-3 bg-white text-black font-semibold hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? "Agendando..." : "Confirmar agendamento"}
+                {loading ? "Confirmando..." : "Confirmar Agendamento"}
               </button>
-
-              <Link
-                href="/"
-                className="rounded-xl border border-zinc-700 px-6 py-3 text-center font-semibold text-zinc-200 transition hover:bg-zinc-900"
-              >
-                Voltar
-              </Link>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </main>

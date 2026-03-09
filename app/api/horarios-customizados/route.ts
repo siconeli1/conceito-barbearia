@@ -43,11 +43,18 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { data, hora_inicio, hora_fim } = body
+    const { data, hora_inicio, hora_fim, nome_cliente, celular_cliente } = body
 
     if (!data || !hora_inicio || !hora_fim) {
       return NextResponse.json(
         { erro: "Data, hora de inicio e hora de fim sao obrigatorias." },
+        { status: 400 }
+      )
+    }
+
+    if (!nome_cliente) {
+      return NextResponse.json(
+        { erro: "Nome do cliente é obrigatório." },
         { status: 400 }
       )
     }
@@ -83,7 +90,7 @@ export async function POST(req: Request) {
 
     const { data: horario, error } = await supabase
       .from("horarios_customizados")
-      .insert([{ data, hora_inicio, hora_fim }])
+      .insert([{ data, hora_inicio, hora_fim, nome_cliente, celular_cliente: celular_cliente || null }])
       .select()
       .single()
 
