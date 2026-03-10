@@ -1,8 +1,8 @@
 import AgendarClient from './AgendarClient'
-import { listarServicosAtivos } from '@/lib/servicos'
+import { listarServicosAtivos, type Servico } from '@/lib/servicos'
 
 export default async function AgendarPage() {
-  let servicos = []
+  let servicos: Servico[] = []
   let initialErro: string | undefined
 
   try {
