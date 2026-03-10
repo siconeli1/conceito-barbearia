@@ -181,8 +181,8 @@ export default function AgendarPage() {
         </div>
 
         {/* Stepper */}
-        <div className="mb-8">
-          <div className="flex items-center justify-center space-x-4">
+        <div className="mb-8 overflow-x-auto">
+          <div className="flex items-center justify-center min-w-max px-4">
             {[
               { step: 1, label: "Data" },
               { step: 2, label: "Horário" },
@@ -190,25 +190,27 @@ export default function AgendarPage() {
               { step: 4, label: "Confirmar" },
             ].map((item) => (
               <div key={item.step} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                    item.step <= currentStep
-                      ? "bg-white text-black"
-                      : "bg-white/20 text-gray-400"
-                  }`}
-                >
-                  {item.step}
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-colors ${
+                      item.step <= currentStep
+                        ? "bg-white text-black"
+                        : "bg-white/20 text-gray-400"
+                    }`}
+                  >
+                    {item.step}
+                  </div>
+                  <span
+                    className={`mt-1 text-xs sm:text-sm font-medium whitespace-nowrap ${
+                      item.step <= currentStep ? "text-white" : "text-gray-400"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
                 </div>
-                <span
-                  className={`ml-2 text-sm font-medium ${
-                    item.step <= currentStep ? "text-white" : "text-gray-400"
-                  }`}
-                >
-                  {item.label}
-                </span>
                 {item.step < 4 && (
                   <div
-                    className={`w-8 h-0.5 mx-4 ${
+                    className={`w-6 sm:w-8 h-0.5 mx-2 sm:mx-4 ${
                       item.step < currentStep ? "bg-white" : "bg-white/20"
                     }`}
                   />
