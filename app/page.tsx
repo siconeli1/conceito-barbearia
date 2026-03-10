@@ -17,19 +17,19 @@ export default function Home() {
               className="h-auto w-auto max-w-md sm:max-w-2xl"
             />
           </div>
-          <p className="text-lg text-gray-400 mb-12 max-w-2xl mx-auto">
+          <p className="text-lg text-gray-400 mb-12 max-w-2xl mx-auto text-base sm:text-lg">
             Excelência e sofisticação em cada detalhe
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/agendar"
-              className="px-8 py-3 bg-white text-black font-semibold hover:bg-gray-200 transition-colors"
+              className="px-6 py-3 sm:px-8 sm:py-3 bg-white text-black font-semibold hover:bg-gray-200 transition-colors text-base sm:text-sm"
             >
               Agendar Horário
             </Link>
             <Link
               href="/meus-agendamentos"
-              className="px-8 py-3 border border-white text-white hover:bg-white/10 transition-colors"
+              className="px-6 py-3 sm:px-8 sm:py-3 border border-white text-white hover:bg-white/10 transition-colors text-base sm:text-sm"
             >
               Meus Agendamentos
             </Link>
@@ -79,12 +79,12 @@ export default function Home() {
         <h2 className="text-3xl font-semibold text-center mb-12">Horários</h2>
         <div className="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto text-center">
           <div className="border-l border-white/20 pl-8">
-            <p className="text-gray-400 mb-2">Segunda a Sexta</p>
-            <p className="text-2xl font-semibold">08:00 - 18:00</p>
+            <p className="text-gray-400 mb-2">Terça a Sexta</p>
+            <p className="text-2xl font-semibold">09:00 - 20:00</p>
           </div>
           <div className="border-l border-white/20 pl-8">
             <p className="text-gray-400 mb-2">Sábado</p>
-            <p className="text-2xl font-semibold">08:00 - 14:00</p>
+            <p className="text-2xl font-semibold">08:30 - 14:00</p>
           </div>
         </div>
       </div>

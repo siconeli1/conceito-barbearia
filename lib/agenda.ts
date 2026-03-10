@@ -1,15 +1,23 @@
 // lib/agenda.ts
 
+// configurações da agenda. usamos um mapa por dia da semana para
+// permitir horários diferentes ao longo da semana.
+// as chaves são números do dia (0=domingo, 6=sábado).
+export const DAILY_SCHEDULE: Record<number, { start: string; end: string }> = {
+  // terça a sexta das 09:00 às 20:00
+  2: { start: '09:00', end: '20:00' },
+  3: { start: '09:00', end: '20:00' },
+  4: { start: '09:00', end: '20:00' },
+  5: { start: '09:00', end: '20:00' },
+
+  // sábado das 08:30 às 14:00
+  6: { start: '08:30', end: '14:00' },
+}
+
 export const AGENDA_CONFIG = {
   timezone: 'America/Sao_Paulo',
-
-  // dias que abre (0=domingo ... 6=sábado)
-  openDays: [1, 2, 3, 4, 5, 6], // seg a sáb
-
-  // horário de funcionamento
-  startTime: '09:00',
-  endTime: '19:00',
-
+  // dias que abre são as chaves definidas no mapa acima
+  openDays: Object.keys(DAILY_SCHEDULE).map((d) => Number(d)),
   // duração padrão do atendimento (em minutos)
   slotMinutes: 30,
 }
@@ -26,9 +34,14 @@ export function minutesToTime(total: number) {
   return `${h}:${m}`
 }
 
-export function generateSlots() {
-  const start = timeToMinutes(AGENDA_CONFIG.startTime)
-  const end = timeToMinutes(AGENDA_CONFIG.endTime)
+export function generateSlots(day: number) {
+  const schedule = DAILY_SCHEDULE[day]
+  if (!schedule) {
+    return []
+  }
+
+  const start = timeToMinutes(schedule.start)
+  const end = timeToMinutes(schedule.end)
   const step = AGENDA_CONFIG.slotMinutes
 
   const slots: { hora_inicio: string; hora_fim: string }[] = []

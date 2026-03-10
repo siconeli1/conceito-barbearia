@@ -274,3 +274,107 @@ export default function MeusAgendamentosPage() {
     </main>
   )
 }
+
+// Componente para card com swipe to cancel
+function SwipeToCancelCard({
+  agendamento,
+  onCancel,
+  isCanceling
+}: {
+  agendamento: Agendamento
+  onCancel: () => void
+  isCanceling: boolean
+}) {
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const [startX, setStartX] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setStartX(e.touches[0].clientX)
+    setIsDragging(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return
+
+    const currentX = e.touches[0].clientX
+    const diff = startX - currentX
+
+    // Só permite swipe para esquerda (diff > 0)
+    if (diff > 0) {
+      setSwipeOffset(Math.min(diff, 80)) // Máximo 80px
+    }
+  }
+
+  const handleTouchEnd = () => {
+    setIsDragging(false)
+
+    if (swipeOffset > 40) {
+      // Swipe suficiente, revela botão
+      setSwipeOffset(80)
+    } else {
+      // Volta ao normal
+      setSwipeOffset(0)
+    }
+  }
+
+  const handleCancelClick = () => {
+    onCancel()
+    setSwipeOffset(0) // Fecha o swipe após cancelar
+  }
+
+  return (
+    <div className="relative overflow-hidden bg-white/5 border border-white/10 rounded-lg">
+      {/* Botão de cancelar (revelado pelo swipe) */}
+      <div
+        className="absolute right-0 top-0 h-full w-20 bg-red-600 flex items-center justify-center transition-transform duration-200"
+        style={{ transform: `translateX(${80 - swipeOffset}px)` }}
+      >
+        <button
+          onClick={handleCancelClick}
+          disabled={isCanceling}
+          className="text-white font-semibold disabled:opacity-50"
+        >
+          {isCanceling ? "..." : "Cancelar"}
+        </button>
+      </div>
+
+      {/* Card principal */}
+      <div
+        className="p-6 transition-transform duration-200"
+        style={{ transform: `translateX(-${swipeOffset}px)` }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-1">
+              {formatarData(agendamento.data)}
+            </h3>
+            <p className="text-gray-400">
+              {formatarHora(agendamento.hora_inicio)} - {agendamento.nome_cliente}
+            </p>
+            <p className="text-gray-400 text-sm">
+              {agendamento.celular_cliente}
+            </p>
+          </div>
+          <div className="text-right">
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              agendamento.status === 'ativo'
+                ? 'bg-green-900 text-green-300'
+                : 'bg-red-900 text-red-300'
+            }`}>
+              {agendamento.status === 'ativo' ? 'Ativo' : 'Cancelado'}
+            </span>
+          </div>
+        </div>
+
+        {/* Hint para swipe */}
+        <div className="text-xs text-gray-500 text-center">
+          Deslize para a esquerda para cancelar
+        </div>
+      </div>
+    </div>
+  )
+}

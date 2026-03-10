@@ -80,7 +80,7 @@ export async function GET(req: Request) {
   const bloqueiosHorario = (bloqueios ?? []).filter(b => !b.dia_inteiro && b.tipo_bloqueio === 'horario')
   const naoAceitarMais = (bloqueios ?? []).some(b => b.tipo_bloqueio === 'nao_aceitar_mais')
 
-  const slots = generateSlots()
+  const slots = generateSlots(day)
 
   // Se há bloqueio de dia inteiro, não retorna nenhum horário
   if (bloqueiosDia.length > 0) {

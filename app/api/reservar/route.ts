@@ -25,18 +25,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: 'Celular inválido' }, { status: 400 })
   }
 
-  // valida se o slot existe (ex.: 09:00, 09:30 etc)
-  const slots = generateSlots()
+  // valida dia de funcionamento e se o slot faz parte dos horários
+  // disponíveis para esse dia.
+  const d = new Date(`${data}T00:00:00`)
+  const day = d.getDay()
+
+  if (!AGENDA_CONFIG.openDays.includes(day)) {
+    return NextResponse.json({ erro: 'Data fora do funcionamento' }, { status: 400 })
+  }
+
+  // gera os slots para o dia solicitado e checa existência
+  const slots = generateSlots(day)
   const slot = slots.find(s => s.hora_inicio === hora_inicio)
   if (!slot) {
     return NextResponse.json({ erro: 'Horário inválido' }, { status: 400 })
-  }
-
-  // valida dia de funcionamento
-  const d = new Date(`${data}T00:00:00`)
-  const day = d.getDay()
-  if (!AGENDA_CONFIG.openDays.includes(day)) {
-    return NextResponse.json({ erro: 'Data fora do funcionamento' }, { status: 400 })
   }
 
   // tenta inserir (a trava do banco impede duplicidade)

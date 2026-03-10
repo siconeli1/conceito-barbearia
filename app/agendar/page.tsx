@@ -57,6 +57,13 @@ export default function AgendarPage() {
   const pastDate = iso ? isDateInPast(iso) : false
   const outOfRange = iso ? isDateBeyondLimit(iso, 30) : false
 
+  // dia da semana da data selecionada (0=dom ... 6=sáb)
+  const dayNumber = iso ? new Date(iso).getDay() : -1
+  const isMonday = dayNumber === 1
+  const isSunday = dayNumber === 0
+  const closedMessage = isSunday ? 'Fechado aos domingos' : isMonday ? 'Fechado às segundas-feiras' : ''
+  const isClosedDay = isMonday || isSunday
+
   const [slots, setSlots] = useState<Slot[]>([])
   const [loading, setLoading] = useState(false)
   const [carregandoHorarios, setCarregandoHorarios] = useState(false)
@@ -72,6 +79,16 @@ export default function AgendarPage() {
   const dateInvalid = form.erro.toLowerCase().includes("data") || form.erro.toLowerCase().includes("passado") || form.erro.toLowerCase().includes("intervalo")
   const nameInvalid = form.erro.toLowerCase().includes("nome")
   const phoneInvalid = form.erro.toLowerCase().includes("celular")
+
+  // Stepper: determinar etapa atual baseada no estado
+  const getCurrentStep = () => {
+    if (!data || pastDate || outOfRange || isClosedDay) return 1
+    if (!form.horarioSelecionado) return 2
+    if (!form.nome || !form.celular) return 3
+    return 4
+  }
+
+  const currentStep = getCurrentStep()
 
   const buscarHorarios = useCallback(async (dataFormatada: string) => {
     setCarregandoHorarios(true)
@@ -97,9 +114,10 @@ export default function AgendarPage() {
   }, [])
 
   useEffect(() => {
-    if (debouncedData && !pastDate && !outOfRange) {
+    if (debouncedData && !pastDate && !outOfRange && !isClosedDay) {
       buscarHorarios(debouncedData)
     } else if (debouncedData) {
+      // não buscamos horários se data inválida, fora do alcance ou dia fechado
       setSlots([])
       dispatch({ type: "setHorario", value: null })
     }
@@ -162,6 +180,44 @@ export default function AgendarPage() {
           <p className="text-gray-400 text-lg">Escolha a data e horário</p>
         </div>
 
+        {/* Stepper */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center space-x-4">
+            {[
+              { step: 1, label: "Data" },
+              { step: 2, label: "Horário" },
+              { step: 3, label: "Dados" },
+              { step: 4, label: "Confirmar" },
+            ].map((item) => (
+              <div key={item.step} className="flex items-center">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                    item.step <= currentStep
+                      ? "bg-white text-black"
+                      : "bg-white/20 text-gray-400"
+                  }`}
+                >
+                  {item.step}
+                </div>
+                <span
+                  className={`ml-2 text-sm font-medium ${
+                    item.step <= currentStep ? "text-white" : "text-gray-400"
+                  }`}
+                >
+                  {item.label}
+                </span>
+                {item.step < 4 && (
+                  <div
+                    className={`w-8 h-0.5 mx-4 ${
+                      item.step < currentStep ? "bg-white" : "bg-white/20"
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Messages */}
         {form.erro && (
           <div className="mb-6 p-4 bg-red-950 border border-red-700 rounded">
@@ -179,12 +235,12 @@ export default function AgendarPage() {
         <div className="space-y-8">
           {/* Date */}
           <div>
-            <label className="block text-sm font-semibold text-white mb-4">Data</label>
+            <label className="block text-base sm:text-sm font-semibold text-white mb-4">Data</label>
             <input
               type="date"
               value={data}
               onChange={(e) => setData(e.target.value)}
-              className={`w-full px-4 py-3 bg-white/5 border rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors ${
+              className={`w-full px-4 py-4 sm:px-4 sm:py-3 bg-white/5 border rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors text-base sm:text-sm ${
                 dateInvalid ? 'border-red-600' : 'border-white/20'
               }`}
               min={new Date().toISOString().split('T')[0]}
@@ -193,7 +249,8 @@ export default function AgendarPage() {
               <div className="text-sm text-gray-400 mt-2">
                 {pastDate && <span className="text-red-400">Data no passado</span>}
                 {outOfRange && <span className="text-red-400">Data fora do intervalo (máx. 30 dias)</span>}
-                {!pastDate && !outOfRange && <span className="text-green-400">✓ Data válida</span>}
+                {isClosedDay && <span className="text-red-400">{closedMessage}</span>}
+                {!pastDate && !outOfRange && !isClosedDay && <span className="text-green-400">✓ Data válida</span>}
               </div>
             )}
           </div>
@@ -205,12 +262,12 @@ export default function AgendarPage() {
             {!carregandoHorarios && slots.length === 0 && data && !pastDate && !outOfRange && (
               <p className="text-gray-400">Nenhum horário disponível para esta data</p>
             )}
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-2">
               {slots.map((slot) => (
                 <button
                   key={slot.hora_inicio}
                   onClick={() => dispatch({ type: "setHorario", value: slot.hora_inicio })}
-                  className={`p-2 border text-center font-medium text-sm transition-colors ${
+                  className={`p-3 sm:p-2 border text-center font-medium text-sm transition-colors ${
                     form.horarioSelecionado === slot.hora_inicio
                       ? 'border-white bg-white text-black'
                       : 'border-white/30 hover:border-white'

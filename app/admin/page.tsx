@@ -370,18 +370,29 @@ export default function AdminPage() {
   }, [mensagem])
 
   return (
-    <main className="min-h-screen bg-black text-white p-10">
+    <main className="min-h-screen bg-black text-white p-6 sm:p-10">
       <div className="w-full max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Painel do Barbeiro</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Painel do Barbeiro</h1>
+          <button
+            onClick={async () => {
+              await fetch("/api/admin/logout", { method: "POST" })
+              window.location.href = "/admin/login"
+            }}
+            className="px-4 py-2 bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors text-sm sm:text-base"
+          >
+            Sair
+          </button>
+        </div>
 
-        <div className="flex gap-4 mb-6 border-b border-zinc-700">
+        <div className="flex gap-4 mb-6 border-b border-zinc-700 overflow-x-auto">
           <button
             onClick={() => {
               setTab("agenda")
               setErro(null)
               setMensagem(null)
             }}
-            className={`pb-2 px-4 font-semibold transition ${
+            className={`pb-2 px-4 font-semibold transition whitespace-nowrap ${
               tab === "agenda"
                 ? "text-white border-b-2 border-green-500"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -396,7 +407,7 @@ export default function AdminPage() {
               setErro(null)
               setMensagem(null)
             }}
-            className={`pb-2 px-4 font-semibold transition ${
+            className={`pb-2 px-4 font-semibold transition whitespace-nowrap ${
               tab === "bloqueios"
                 ? "text-white border-b-2 border-green-500"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -411,7 +422,7 @@ export default function AdminPage() {
               setErro(null)
               setMensagem(null)
             }}
-            className={`pb-2 px-4 font-semibold transition ${
+            className={`pb-2 px-4 font-semibold transition whitespace-nowrap ${
               tab === "horarios"
                 ? "text-white border-b-2 border-green-500"
                 : "text-zinc-400 hover:text-zinc-200"
