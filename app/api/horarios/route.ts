@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { AGENDA_CONFIG, generateSlots, timeToMinutes } from '@/lib/agenda'
+import { AGENDA_CONFIG, generateSlots, minutesToTime, timeToMinutes } from '@/lib/agenda'
 
 // Converte time string (HH:MM ou HH:MM:SS) para minutos desde meia-noite
 function parseTimeToMinutes(timeStr: string): number {
@@ -8,18 +8,51 @@ function parseTimeToMinutes(timeStr: string): number {
   return h * 60 + m
 }
 
-// Verifica se um slot se sobrepõe com um horário customizado
-function overlapsWithCustom(slotStart: number, slotEnd: number, customStart: number, customEnd: number): boolean {
-  // Há sobreposição se: slot começa ANTES do fim do custom E slot termina DEPOIS do início do custom
-  return slotStart < customEnd && slotEnd > customStart
+function overlaps(slotStart: number, slotEnd: number, busyStart: number, busyEnd: number): boolean {
+  // Há sobreposição se: início do candidato é antes do fim ocupado
+  // e fim do candidato é depois do início ocupado.
+  return slotStart < busyEnd && slotEnd > busyStart
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const data = searchParams.get('data') // YYYY-MM-DD
+  const servicoId = searchParams.get('servico_id')
+  const servicoCodigo = searchParams.get('servico_codigo')
 
   if (!data) {
     return NextResponse.json({ erro: 'Informe ?data=YYYY-MM-DD' }, { status: 400 })
+  }
+
+  if (!servicoId && !servicoCodigo) {
+    return NextResponse.json(
+      { erro: 'Informe o serviço em ?servico_id=... ou ?servico_codigo=...' },
+      { status: 400 }
+    )
+  }
+
+  // Busca serviço ativo para obter duração usada no cálculo de disponibilidade.
+  const servicoQuery = supabase
+    .from('servicos')
+    .select('id, codigo, nome, duracao_minutos, preco, ativo')
+    .eq('ativo', true)
+
+  const { data: servicos, error: servicoError } = await (servicoId
+    ? servicoQuery.eq('id', servicoId)
+    : servicoQuery.eq('codigo', servicoCodigo!))
+
+  if (servicoError) {
+    return NextResponse.json({ erro: servicoError.message }, { status: 500 })
+  }
+
+  const servico = servicos?.[0]
+  if (!servico) {
+    return NextResponse.json({ erro: 'Serviço não encontrado ou inativo' }, { status: 404 })
+  }
+
+  const duracao = Number(servico.duracao_minutos)
+  if (!Number.isFinite(duracao) || duracao <= 0) {
+    return NextResponse.json({ erro: 'Duração do serviço inválida' }, { status: 400 })
   }
 
   // Verifica dia da semana (0=dom ... 6=sáb)
@@ -30,10 +63,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ data, horarios: [] })
   }
 
-  // Busca agendamentos ATIVOS do dia
+  // Busca agendamentos ativos do dia.
   const { data: agendados, error } = await supabase
     .from('agendamentos')
-    .select('hora_inicio')
+    .select('hora_inicio, hora_fim')
     .eq('data', data)
     .eq('status', 'ativo')
 
@@ -63,68 +96,74 @@ export async function GET(req: Request) {
     // Continua sem bloqueios em caso de erro
   }
 
-  // Normaliza o formato retornado pelo Postgres (TIME geralmente vem como HH:MM:SS)
-  // Ex.: "09:00:00" -> "09:00"
-  const ocupados = new Set(
-    (agendados ?? []).map((a: any) => String(a.hora_inicio).slice(0, 5))
-  )
+  // Processa agendamentos já existentes do dia.
+  const intervalosAgendados = (agendados ?? []).map((a) => ({
+    inicio: parseTimeToMinutes(String(a.hora_inicio)),
+    fim: parseTimeToMinutes(String(a.hora_fim)),
+  }))
 
-  // Processa horários customizados
-  const hcustomizados = (horariosCustomizados ?? []).map(hc => ({
+  // Processa horários customizados do barbeiro.
+  const intervalosCustomizados = (horariosCustomizados ?? []).map((hc) => ({
     inicio: parseTimeToMinutes(hc.hora_inicio),
     fim: parseTimeToMinutes(hc.hora_fim),
   }))
 
-  // Processa bloqueios
-  const bloqueiosDia = (bloqueios ?? []).filter(b => b.dia_inteiro || b.tipo_bloqueio === 'dia_inteiro')
-  const bloqueiosHorario = (bloqueios ?? []).filter(b => !b.dia_inteiro && b.tipo_bloqueio === 'horario')
-  const naoAceitarMais = (bloqueios ?? []).some(b => b.tipo_bloqueio === 'nao_aceitar_mais')
+  // Processa bloqueios.
+  const bloqueiosDia = (bloqueios ?? []).filter((b) => b.dia_inteiro || b.tipo_bloqueio === 'dia_inteiro')
+  const bloqueiosHorario = (bloqueios ?? []).filter((b) => !b.dia_inteiro && b.tipo_bloqueio === 'horario')
+  const naoAceitarMais = (bloqueios ?? []).some((b) => b.tipo_bloqueio === 'nao_aceitar_mais')
 
   const slots = generateSlots(day)
 
-  // Se há bloqueio de dia inteiro, não retorna nenhum horário
-  if (bloqueiosDia.length > 0) {
+  if (slots.length === 0) {
     return NextResponse.json({
       data,
       horarios: [],
+      servico,
     })
   }
 
-  // Remove os horários ocupados E os que se sobrepõem com horários customizados ou bloqueios
-  const horariosDisponiveis = slots.filter((s) => {
-    const sInicio = timeToMinutes(s.hora_inicio)
-    const sFim = timeToMinutes(s.hora_fim)
+  // Se há bloqueio de dia inteiro ou não aceitar mais, não há horários.
+  if (bloqueiosDia.length > 0 || naoAceitarMais) {
+    return NextResponse.json({ data, horarios: [], servico })
+  }
 
-    // Se o slot está ocupado por agendamento, remove
-    if (ocupados.has(s.hora_inicio)) {
-      return false
-    }
+  const intervaloBloqueios = bloqueiosHorario
+    .filter((b) => b.hora_inicio && b.hora_fim)
+    .map((b) => ({
+      inicio: parseTimeToMinutes(String(b.hora_inicio)),
+      fim: parseTimeToMinutes(String(b.hora_fim)),
+    }))
 
-    // Se há bloqueio "não aceitar mais horários", remove slots vazios
-    if (naoAceitarMais && !ocupados.has(s.hora_inicio)) {
-      return false
-    }
+  const intervalosIndisponiveis = [
+    ...intervalosAgendados,
+    ...intervalosCustomizados,
+    ...intervaloBloqueios,
+  ]
 
-    // Se o slot se sobrepõe com algum horário customizado, remove
-    if (hcustomizados.some(hc => overlapsWithCustom(sInicio, sFim, hc.inicio, hc.fim))) {
-      return false
-    }
+  const inicioAgenda = timeToMinutes(slots[0].hora_inicio)
+  const fimAgenda = timeToMinutes(slots[slots.length - 1].hora_fim)
 
-    // Se o slot se sobrepõe com algum bloqueio de horário, remove
-    if (bloqueiosHorario.some(b => {
-      if (!b.hora_inicio || !b.hora_fim) return false
-      const bInicio = parseTimeToMinutes(b.hora_inicio)
-      const bFim = parseTimeToMinutes(b.hora_fim)
-      return overlapsWithCustom(sInicio, sFim, bInicio, bFim)
-    })) {
-      return false
-    }
+  // Horário inicial é válido somente se o serviço inteiro couber sem conflito.
+  const horariosDisponiveis = slots
+    .map((slot) => timeToMinutes(slot.hora_inicio))
+    .filter((inicio) => {
+      const fim = inicio + duracao
 
-    return true
-  })
+      if (inicio < inicioAgenda || fim > fimAgenda) {
+        return false
+      }
+
+      return !intervalosIndisponiveis.some((i) => overlaps(inicio, fim, i.inicio, i.fim))
+    })
+    .map((inicio) => ({
+      hora_inicio: minutesToTime(inicio),
+      hora_fim: minutesToTime(inicio + duracao),
+    }))
 
   return NextResponse.json({
     data,
     horarios: horariosDisponiveis,
+    servico,
   })
 }

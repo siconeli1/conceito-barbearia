@@ -7,8 +7,12 @@ type Agendamento = {
   id: string
   data: string
   hora_inicio: string
+  hora_fim: string
   nome_cliente: string
   celular_cliente: string
+  servico_nome?: string
+  servico_preco?: number
+  origem?: 'agendamento' | 'horario_customizado'
 }
 
 type Bloqueio = {
@@ -31,6 +35,11 @@ type HorarioCustomizado = {
 }
 
 type ApiJson = unknown
+
+type ServicoFiltro = {
+  id: string
+  nome: string
+}
 
 function formatarDataInput(data: Date) {
   return data.toISOString().split("T")[0]
@@ -61,6 +70,8 @@ type Tab = "agenda" | "bloqueios" | "horarios"
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("agenda")
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
+  const [servicos, setServicos] = useState<ServicoFiltro[]>([])
+  const [servicoFiltro, setServicoFiltro] = useState<string>("todos")
   const [dataSelecionada, setDataSelecionada] = useState(formatarDataInput(new Date()))
   const [bloqueios, setBloqueios] = useState<Bloqueio[]>([])
   const [dataBloqueio, setDataBloqueio] = useState(formatarDataInput(new Date()))
@@ -90,6 +101,26 @@ export default function AdminPage() {
       setAgendamentos([])
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const carregarServicos = useCallback(async () => {
+    try {
+      const res = await fetch('/api/servicos')
+      const json = await lerRespostaJson(res)
+
+      if (!res.ok) {
+        throw new Error(((json as Record<string, unknown>).erro as string) || 'Erro ao carregar serviços.')
+      }
+
+      const lista = (((json as Record<string, unknown>).servicos as Record<string, unknown>[]) || [])
+      setServicos(lista.map((s) => ({
+        id: String(s.id),
+        nome: String(s.nome),
+      })))
+    } catch (error) {
+      console.error(error)
+      setServicos([])
     }
   }, [])
 
@@ -151,6 +182,10 @@ export default function AdminPage() {
   useEffect(() => {
     carregarAgenda(dataSelecionada)
   }, [dataSelecionada, carregarAgenda])
+
+  useEffect(() => {
+    carregarServicos()
+  }, [carregarServicos])
 
   useEffect(() => {
     if (tab === "bloqueios") {
@@ -360,12 +395,68 @@ export default function AdminPage() {
     }
   }
 
+  async function cancelarItemAgenda(item: Agendamento) {
+    const isHorarioCustomizado = item.origem === 'horario_customizado'
+    const confirmado = confirm(
+      isHorarioCustomizado
+        ? 'Tem certeza que deseja remover este horário personalizado?'
+        : 'Tem certeza que deseja cancelar este agendamento?'
+    )
+
+    if (!confirmado) return
+
+    setErro(null)
+    setMensagem(null)
+    setLoading(true)
+
+    try {
+      const res = await fetch(
+        isHorarioCustomizado ? '/api/horarios-customizados' : '/api/cancelar',
+        {
+          method: isHorarioCustomizado ? 'DELETE' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id }),
+        }
+      )
+
+      const json = await lerRespostaJson(res)
+
+      if (!res.ok) {
+        throw new Error(((json as Record<string, unknown>).erro as string) || 'Erro ao cancelar horário.')
+      }
+
+      setMensagem(
+        isHorarioCustomizado
+          ? 'Horário personalizado removido com sucesso!'
+          : 'Agendamento cancelado com sucesso!'
+      )
+
+      await carregarAgenda(dataSelecionada)
+
+      if (tab === 'horarios') {
+        await carregarHorarios(dataHorarios)
+      }
+    } catch (error: unknown) {
+      setErro(error instanceof Error ? error.message : 'Erro ao cancelar horário.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (mensagem) {
       const timer = setTimeout(() => setMensagem(null), 5000)
       return () => clearTimeout(timer)
     }
   }, [mensagem])
+
+  const agendamentosFiltrados = servicoFiltro === 'todos'
+    ? agendamentos
+    : agendamentos.filter((a) => (a.servico_nome || 'Não informado') === servicoFiltro)
+
+  const totalAgendamentosDia = agendamentosFiltrados.length
+  const totalFaturamentoDia = agendamentosFiltrados.reduce((acc, a) => acc + Number(a.servico_preco || 0), 0)
+  const ticketMedio = totalAgendamentosDia > 0 ? totalFaturamentoDia / totalAgendamentosDia : 0
 
   return (
     <main className="min-h-screen bg-black text-white p-6 sm:p-10">
@@ -446,7 +537,7 @@ export default function AdminPage() {
           <div className="bg-zinc-900 rounded-lg p-6">
             <h2 className="text-xl mb-4 text-white">Agenda</h2>
 
-            <div className="mb-6">
+            <div className="mb-6 grid sm:grid-cols-2 gap-4">
               <label htmlFor="data-agenda" className="block text-sm text-zinc-200 mb-2">
                 Selecionar data
               </label>
@@ -457,8 +548,46 @@ export default function AdminPage() {
                 disabled={loading}
                 value={dataSelecionada}
                 onChange={(e) => setDataSelecionada(e.target.value)}
-                className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
               />
+
+              <div className="mt-4 sm:mt-0">
+                <label htmlFor="servico-filtro" className="block text-sm text-zinc-200 mb-2">
+                  Filtrar por serviço
+                </label>
+                <select
+                  id="servico-filtro"
+                  value={servicoFiltro}
+                  onChange={(e) => setServicoFiltro(e.target.value)}
+                  className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                >
+                  <option value="todos">Todos os serviços</option>
+                  {servicos.map((s) => (
+                    <option key={s.id} value={s.nome}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-3 gap-3 mb-6">
+              <div className="rounded border border-zinc-700 bg-zinc-800/60 p-3">
+                <p className="text-xs text-zinc-400">Atendimentos do dia</p>
+                <p className="text-xl font-semibold text-white">{totalAgendamentosDia}</p>
+              </div>
+              <div className="rounded border border-zinc-700 bg-zinc-800/60 p-3">
+                <p className="text-xs text-zinc-400">Faturamento do dia</p>
+                <p className="text-xl font-semibold text-green-400">
+                  {totalFaturamentoDia.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </p>
+              </div>
+              <div className="rounded border border-zinc-700 bg-zinc-800/60 p-3">
+                <p className="text-xs text-zinc-400">Ticket médio</p>
+                <p className="text-xl font-semibold text-white">
+                  {ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </p>
+              </div>
             </div>
 
             <p className="text-sm text-zinc-200 mb-4">
@@ -467,30 +596,50 @@ export default function AdminPage() {
 
             {loading && <p>Carregando...</p>}
 
-            {!loading && agendamentos.length === 0 && (
+            {!loading && agendamentosFiltrados.length === 0 && (
               <p className="text-zinc-400">Nenhum horario agendado nesta data.</p>
             )}
 
             {!loading &&
-              agendamentos.map((a) => (
+              agendamentosFiltrados.map((a) => (
                 <div
                   key={a.id}
-                  className="flex justify-between items-center border-b border-zinc-700 py-4"
+                  className="flex justify-between items-center border-b border-zinc-700 py-4 gap-4"
                 >
                   <div>
-                    <p className="font-semibold">{formatarHora(a.hora_inicio)}</p>
+                    <p className="font-semibold">
+                      {formatarHora(a.hora_inicio)} - {formatarHora(a.hora_fim)}
+                    </p>
                     <p className="text-sm text-zinc-300">{a.nome_cliente}</p>
                     <p className="text-sm text-zinc-500">{a.celular_cliente}</p>
+                    <p className="text-sm text-zinc-300 mt-1">{a.servico_nome || 'Serviço não informado'}</p>
+                    <p className="text-sm text-green-400">
+                      {(Number(a.servico_preco || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
                   </div>
 
-                  <a
-                    target="_blank"
-                    rel="noreferrer"
-                    href={`https://wa.me/55${a.celular_cliente.replace(/\D/g, "")}`}
-                    className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded text-sm font-medium"
-                  >
-                    WhatsApp
-                  </a>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    {a.celular_cliente ? (
+                      <a
+                        target="_blank"
+                        rel="noreferrer"
+                        href={`https://wa.me/55${a.celular_cliente.replace(/\D/g, "")}`}
+                        className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded text-sm font-medium whitespace-nowrap text-center"
+                      >
+                        WhatsApp
+                      </a>
+                    ) : (
+                      <span className="text-xs text-zinc-500">Sem telefone</span>
+                    )}
+
+                    <button
+                      onClick={() => cancelarItemAgenda(a)}
+                      disabled={loading}
+                      className="bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed border border-red-500/30 text-red-200 px-4 py-2 rounded text-sm font-medium whitespace-nowrap"
+                    >
+                      {a.origem === 'horario_customizado' ? 'Remover' : 'Cancelar'}
+                    </button>
+                  </div>
                 </div>
               ))}
           </div>
@@ -513,7 +662,7 @@ export default function AdminPage() {
                     required
                     value={dataBloqueio}
                     onChange={(e) => setDataBloqueio(e.target.value)}
-                    className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                    className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 w-full"
                   />
                 </div>
 
@@ -559,7 +708,7 @@ export default function AdminPage() {
                       id="hora-inicio"
                       name="hora_inicio"
                       type="time"
-                      className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                      className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 w-full"
                     />
                   </div>
 
@@ -571,7 +720,7 @@ export default function AdminPage() {
                       id="hora-fim"
                       name="hora_fim"
                       type="time"
-                      className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                      className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 w-full"
                     />
                   </div>
                 </div>
@@ -693,7 +842,7 @@ export default function AdminPage() {
                     required
                     value={dataHorarios}
                     onChange={(e) => setDataHorarios(e.target.value)}
-                    className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                    className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 w-full"
                   />
                 </div>
 
@@ -734,7 +883,7 @@ export default function AdminPage() {
                       name="hora_inicio"
                       type="time"
                       required
-                      className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                      className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 w-full"
                     />
                   </div>
 
@@ -747,7 +896,7 @@ export default function AdminPage() {
                       name="hora_fim"
                       type="time"
                       required
-                      className="bg-zinc-800 text-white px-4 py-2 rounded border border-zinc-700 w-full"
+                      className="datetime-input text-white px-4 py-2 rounded border border-zinc-700 w-full"
                     />
                   </div>
                 </div>

@@ -21,9 +21,9 @@ export async function GET(req: Request) {
     // Busca agendamentos normais
     const { data: agendamentos, error } = await supabase
       .from("agendamentos")
-      .select("*")
+      .select("id, data, hora_inicio, hora_fim, nome_cliente, celular_cliente, servico_nome, servico_preco, status")
       .eq("data", data)
-      .in("status", ["agendado", "ativo"])
+      .eq("status", "ativo")
       .order("hora_inicio", { ascending: true })
 
     if (error) {
@@ -47,14 +47,21 @@ export async function GET(req: Request) {
 
     // Mescla os dois arrays transformando os horários customizados no formato de agendamentos
     const todosAgendamentos = [
-      ...(agendamentos || []),
+      ...((agendamentos || []).map((agendamento) => ({
+        ...agendamento,
+        origem: 'agendamento',
+      }))),
       ...(horariosCustomizados || []).map(hc => ({
         id: hc.id,
         data: hc.data,
         hora_inicio: hc.hora_inicio,
+        hora_fim: hc.hora_fim,
         nome_cliente: hc.nome_cliente || 'Horário reservado',
         celular_cliente: hc.celular_cliente || '',
+        servico_nome: 'Horário personalizado',
+        servico_preco: 0,
         status: 'ativo',
+        origem: 'horario_customizado',
       }))
     ]
 

@@ -24,3 +24,35 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.datetime-input {
+  color-scheme: dark;
+  padding-right: 3rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.datetime-input:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.datetime-input:focus {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.datetime-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.4);
+  opacity: 1;
+  cursor: pointer;
+}
+
+.datetime-input::-webkit-datetime-edit,
+.datetime-input::-webkit-datetime-edit-text,
+.datetime-input::-webkit-datetime-edit-month-field,
+.datetime-input::-webkit-datetime-edit-day-field,
+.datetime-input::-webkit-datetime-edit-year-field,
+.datetime-input::-webkit-datetime-edit-hour-field,
+.datetime-input::-webkit-datetime-edit-minute-field {
+  color: #ffffff;
+}

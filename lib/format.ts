@@ -19,6 +19,21 @@ export function formatarData(valor: string) {
   return valor
 }
 
+// formata datas ISO do banco (YYYY-MM-DD) para DD/MM/YYYY
+export function formatarDataISO(valor: string) {
+  if (!valor || !valor.includes("-")) {
+    return valor
+  }
+
+  const [ano, mes, dia] = valor.split("-")
+
+  if (!ano || !mes || !dia) {
+    return valor
+  }
+
+  return `${dia}/${mes}/${ano}`
+}
+
 // simplifica hora no formato HH:MM ou HH:MM:SS para HH:MM
 export function formatarHora(hora: string) {
   return hora.slice(0, 5)

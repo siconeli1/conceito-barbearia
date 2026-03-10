@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useState } from "react"
 import Link from "next/link"
-import { formatarData, formatarHora } from "../../lib/format"
+import { formatarDataISO, formatarHora } from "../../lib/format"
 
 interface Agendamento {
   id: string
@@ -11,6 +11,8 @@ interface Agendamento {
   hora_fim: string
   nome_cliente: string
   celular_cliente: string
+  servico_nome?: string
+  servico_preco?: number
   status: "ativo" | "cancelado"
 }
 
@@ -69,7 +71,21 @@ export default function MeusAgendamentosPage() {
   })
 
   const agendamentosAtivos = form.agendamentos.filter((a) => a.status === "ativo")
-  const agendamentosCancelados = form.agendamentos.filter((a) => a.status === "cancelado")
+  const agendamentosCancelados = form.agendamentos
+    .filter((a) => a.status === "cancelado")
+    .sort((a, b) => {
+      const dataA = `${a.data}T${a.hora_inicio}`
+      const dataB = `${b.data}T${b.hora_inicio}`
+      return new Date(dataB).getTime() - new Date(dataA).getTime()
+    })
+    .slice(0, 5)
+
+  function formatarPreco(valor?: number) {
+    return Number(valor ?? 0).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    })
+  }
 
   async function buscar() {
     if (!form.celular) {
@@ -191,7 +207,7 @@ export default function MeusAgendamentosPage() {
         {agendamentosAtivos.length > 0 && (
           <div className="mb-12">
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Agendamentos Ativas ({agendamentosAtivos.length})
+              Agendamentos Ativos ({agendamentosAtivos.length})
             </h2>
             <div className="space-y-4">
               {agendamentosAtivos.map((agendamento) => (
@@ -202,12 +218,12 @@ export default function MeusAgendamentosPage() {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Data</p>
-                      <p className="text-white font-semibold">{formatarData(agendamento.data)}</p>
+                      <p className="text-white font-semibold">{formatarDataISO(agendamento.data)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Horário</p>
                       <p className="text-white font-semibold">
-                        {agendamento.hora_inicio} - {agendamento.hora_fim}
+                        {formatarHora(agendamento.hora_inicio)} - {formatarHora(agendamento.hora_fim)}
                       </p>
                     </div>
                     <div>
@@ -217,6 +233,14 @@ export default function MeusAgendamentosPage() {
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Celular</p>
                       <p className="text-white font-semibold">{agendamento.celular_cliente}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 mb-1">Serviço</p>
+                      <p className="text-white font-semibold">{agendamento.servico_nome || "Não informado"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 mb-1">Valor</p>
+                      <p className="text-green-400 font-semibold">{formatarPreco(agendamento.servico_preco)}</p>
                     </div>
                   </div>
                   <button
@@ -247,12 +271,12 @@ export default function MeusAgendamentosPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Data</p>
-                      <p className="text-gray-300">{formatarData(agendamento.data)}</p>
+                      <p className="text-gray-300">{formatarDataISO(agendamento.data)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Horário</p>
                       <p className="text-gray-300">
-                        {agendamento.hora_inicio} - {agendamento.hora_fim}
+                        {formatarHora(agendamento.hora_inicio)} - {formatarHora(agendamento.hora_fim)}
                       </p>
                     </div>
                     <div>
@@ -262,6 +286,14 @@ export default function MeusAgendamentosPage() {
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Celular</p>
                       <p className="text-gray-300">{agendamento.celular_cliente}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 mb-1">Serviço</p>
+                      <p className="text-gray-300">{agendamento.servico_nome || "Não informado"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 mb-1">Valor</p>
+                      <p className="text-gray-300">{formatarPreco(agendamento.servico_preco)}</p>
                     </div>
                   </div>
                   <div className="text-sm text-gray-400 mt-4">Cancelado</div>
@@ -350,7 +382,7 @@ function SwipeToCancelCard({
         <div className="flex justify-between items-start mb-4">
           <div>
             <h3 className="text-lg font-semibold text-white mb-1">
-              {formatarData(agendamento.data)}
+              {formatarDataISO(agendamento.data)}
             </h3>
             <p className="text-gray-400">
               {formatarHora(agendamento.hora_inicio)} - {agendamento.nome_cliente}

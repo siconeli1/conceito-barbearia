@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // protege rotas que começam com /admin, EXCETO /admin/login
@@ -9,7 +9,6 @@ export function middleware(request: NextRequest) {
     const token = request.cookies.get('admin_token')?.value
 
     if (!token) {
-      // redireciona para login se não autenticado
       const loginUrl = new URL('/admin/login', request.url)
       return NextResponse.redirect(loginUrl)
     }
@@ -20,7 +19,7 @@ export function middleware(request: NextRequest) {
     const token = request.cookies.get('admin_token')?.value
 
     if (!token) {
-      return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 })
+      return NextResponse.json({ erro: 'Nao autorizado' }, { status: 401 })
     }
   }
 
