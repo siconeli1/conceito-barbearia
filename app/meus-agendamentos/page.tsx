@@ -257,11 +257,11 @@ export default function MeusAgendamentosPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Nome</p>
-                      <p className="text-gray-300">{agendamento.nome}</p>
+                      <p className="text-gray-300">{agendamento.nome_cliente}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Celular</p>
-                      <p className="text-gray-300">{agendamento.celular}</p>
+                      <p className="text-gray-300">{agendamento.celular_cliente}</p>
                     </div>
                   </div>
                   <div className="text-sm text-gray-400 mt-4">Cancelado</div>
