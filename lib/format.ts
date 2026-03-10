@@ -19,6 +19,11 @@ export function formatarData(valor: string) {
   return valor
 }
 
+// simplifica hora no formato HH:MM ou HH:MM:SS para HH:MM
+export function formatarHora(hora: string) {
+  return hora.slice(0, 5)
+}
+
 export function converterParaISO(data: string) {
   if (data.length !== 10) return null
 

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { formatarHora } from '@/lib/format'
 
 type Agendamento = {
   id: string
@@ -40,9 +41,6 @@ function formatarDataBR(data: string) {
   return `${dia}/${mes}/${ano}`
 }
 
-function formatarHora(hora: string) {
-  return hora.slice(0, 5)
-}
 
 async function lerRespostaJson(res: Response): Promise<ApiJson> {
   const contentType = res.headers.get("content-type") || ""

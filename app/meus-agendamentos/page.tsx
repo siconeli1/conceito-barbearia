@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useState } from "react"
 import Link from "next/link"
-import { formatarData } from "../../lib/format"
+import { formatarData, formatarHora } from "../../lib/format"
 
 interface Agendamento {
   id: string
@@ -11,7 +11,7 @@ interface Agendamento {
   hora_fim: string
   nome: string
   celular: string
-  status: "confirmed" | "cancelled"
+  status: "ativo" | "cancelado"
 }
 
 interface SearchResponse {
@@ -68,8 +68,8 @@ export default function MeusAgendamentosPage() {
     loading: false,
   })
 
-  const agendamentosAtivos = form.agendamentos.filter((a) => a.status === "confirmed")
-  const agendamentosCancelados = form.agendamentos.filter((a) => a.status === "cancelled")
+  const agendamentosAtivos = form.agendamentos.filter((a) => a.status === "ativo")
+  const agendamentosCancelados = form.agendamentos.filter((a) => a.status === "cancelado")
 
   async function buscar() {
     if (!form.celular) {
