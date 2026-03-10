@@ -1,17 +1,12 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { listarServicosAtivos } from '@/lib/servicos'
 
 export async function GET() {
-  const { data, error } = await supabase
-    .from('servicos')
-    .select('id, codigo, nome, duracao_minutos, preco, ativo, ordem')
-    .eq('ativo', true)
-    .order('ordem', { ascending: true })
-    .order('nome', { ascending: true })
-
-  if (error) {
-    return NextResponse.json({ erro: error.message }, { status: 500 })
+  try {
+    const servicos = await listarServicosAtivos()
+    return NextResponse.json({ servicos })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao carregar serviços'
+    return NextResponse.json({ erro: message }, { status: 500 })
   }
-
-  return NextResponse.json({ servicos: data ?? [] })
 }

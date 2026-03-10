@@ -53,3 +53,42 @@ export function generateSlots(day: number) {
   }
   return slots
 }
+
+function getCurrentDateParts(referenceDate: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+
+  const parts = formatter.formatToParts(referenceDate)
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value])
+  ) as Record<string, string>
+
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    minutes: Number(values.hour) * 60 + Number(values.minute),
+  }
+}
+
+export function filterPastSlotsForDate(
+  date: string,
+  slots: { hora_inicio: string; hora_fim: string }[],
+  referenceDate = new Date(),
+  timeZone = AGENDA_CONFIG.timezone
+) {
+  const current = getCurrentDateParts(referenceDate, timeZone)
+
+  if (date !== current.date) {
+    return slots
+  }
+
+  return slots.filter((slot) => timeToMinutes(slot.hora_inicio) > current.minutes)
+}

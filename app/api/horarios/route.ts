@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { AGENDA_CONFIG, generateSlots, minutesToTime, timeToMinutes } from '@/lib/agenda'
+import { AGENDA_CONFIG, filterPastSlotsForDate, generateSlots, minutesToTime, timeToMinutes } from '@/lib/agenda'
 
 // Converte time string (HH:MM ou HH:MM:SS) para minutos desde meia-noite
 function parseTimeToMinutes(timeStr: string): number {
@@ -113,7 +113,7 @@ export async function GET(req: Request) {
   const bloqueiosHorario = (bloqueios ?? []).filter((b) => !b.dia_inteiro && b.tipo_bloqueio === 'horario')
   const naoAceitarMais = (bloqueios ?? []).some((b) => b.tipo_bloqueio === 'nao_aceitar_mais')
 
-  const slots = generateSlots(day)
+  const slots = filterPastSlotsForDate(data, generateSlots(day))
 
   if (slots.length === 0) {
     return NextResponse.json({
