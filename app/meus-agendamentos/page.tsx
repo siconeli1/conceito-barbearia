@@ -9,8 +9,8 @@ interface Agendamento {
   data: string
   hora_inicio: string
   hora_fim: string
-  nome: string
-  celular: string
+  nome_cliente: string
+  celular_cliente: string
   status: "ativo" | "cancelado"
 }
 
@@ -212,11 +212,11 @@ export default function MeusAgendamentosPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Nome</p>
-                      <p className="text-white font-semibold">{agendamento.nome}</p>
+                      <p className="text-white font-semibold">{agendamento.nome_cliente}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-400 mb-1">Celular</p>
-                      <p className="text-white font-semibold">{agendamento.celular}</p>
+                      <p className="text-white font-semibold">{agendamento.celular_cliente}</p>
                     </div>
                   </div>
                   <button
