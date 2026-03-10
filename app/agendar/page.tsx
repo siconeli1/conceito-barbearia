@@ -29,6 +29,17 @@ interface ReservaResponse {
   erro?: string
 }
 
+interface AgendamentoConfirmado {
+  nome: string
+  celular: string
+  data: string
+  hora_inicio: string
+  hora_fim: string
+  servico_nome: string
+  servico_duracao: number
+  servico_preco: number
+}
+
 interface FormState {
   nome: string
   celular: string
@@ -68,6 +79,7 @@ export default function AgendarPage() {
   const [servicos, setServicos] = useState<Servico[]>([])
   const [servicoSelecionadoId, setServicoSelecionadoId] = useState<string | null>(null)
   const [carregandoServicos, setCarregandoServicos] = useState(true)
+  const [agendamentoConfirmado, setAgendamentoConfirmado] = useState<AgendamentoConfirmado | null>(null)
   const [data, setData] = useState("")
   const debouncedData = useDebounce(data, 300)
   const iso = data || null
@@ -217,7 +229,16 @@ export default function AgendarPage() {
         return
       }
 
-      dispatch({ type: "setMsg", value: "Agendamento realizado com sucesso!" })
+      setAgendamentoConfirmado({
+        nome: form.nome,
+        celular: form.celular,
+        data,
+        hora_inicio: form.horarioSelecionado,
+        hora_fim: slotSelecionado?.hora_fim ?? form.horarioSelecionado,
+        servico_nome: servicoSelecionado.nome,
+        servico_duracao: servicoSelecionado.duracao_minutos,
+        servico_preco: Number(servicoSelecionado.preco),
+      })
       dispatch({ type: "reset" })
       setData("")
       setServicoSelecionadoId(servicos[0]?.id ?? null)
@@ -239,6 +260,118 @@ export default function AgendarPage() {
       style: "currency",
       currency: "BRL",
     })
+  }
+
+  if (agendamentoConfirmado) {
+    return (
+      <main className="min-h-screen bg-black text-white overflow-hidden">
+        <div className="relative isolate min-h-screen">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.04),transparent_45%),linear-gradient(180deg,#050505_0%,#000000_100%)]" />
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+
+          <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
+            <div className="mb-8">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Voltar
+              </Link>
+            </div>
+
+            <section className="border border-white/10 bg-white/[0.03] backdrop-blur-sm shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_30px_120px_rgba(0,0,0,0.55)]">
+              <div className="grid lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="p-8 sm:p-12 border-b lg:border-b-0 lg:border-r border-white/10">
+                  <div className="inline-flex items-center gap-3 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-300 mb-8">
+                    <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
+                    Horario agendado com sucesso
+                  </div>
+
+                  <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white mb-4">
+                    Seu horario esta confirmado.
+                  </h1>
+                  <p className="text-lg text-gray-300 max-w-xl leading-relaxed mb-10">
+                    Reservamos seu atendimento na Conceito Barbearia. Confira os detalhes abaixo e, se precisar,
+                    acompanhe depois em Meus Agendamentos.
+                  </p>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="border border-white/10 bg-black/30 p-5">
+                      <p className="text-xs uppercase tracking-[0.22em] text-gray-500 mb-2">Servico</p>
+                      <p className="text-xl font-semibold text-white mb-1">{agendamentoConfirmado.servico_nome}</p>
+                      <p className="text-sm text-gray-400">
+                        {agendamentoConfirmado.servico_duracao} min • {formatarPreco(agendamentoConfirmado.servico_preco)}
+                      </p>
+                    </div>
+                    <div className="border border-white/10 bg-black/30 p-5">
+                      <p className="text-xs uppercase tracking-[0.22em] text-gray-500 mb-2">Horario</p>
+                      <p className="text-xl font-semibold text-white mb-1">
+                        {formatarDataResumo(agendamentoConfirmado.data)}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {agendamentoConfirmado.hora_inicio} ate {agendamentoConfirmado.hora_fim}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-8 sm:p-10 bg-white/[0.02]">
+                  <div className="mb-8 pb-6 border-b border-white/10">
+                    <p className="text-xs uppercase tracking-[0.24em] text-gray-500 mb-3">Comprovante</p>
+                    <p className="text-2xl font-semibold text-white">Resumo do agendamento</p>
+                  </div>
+
+                  <div className="space-y-5 text-sm">
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Cliente</span>
+                      <span className="text-right text-white font-medium">{agendamentoConfirmado.nome}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Celular</span>
+                      <span className="text-right text-white font-medium">{agendamentoConfirmado.celular}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Data</span>
+                      <span className="text-right text-white font-medium">{formatarDataResumo(agendamentoConfirmado.data)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Inicio</span>
+                      <span className="text-right text-white font-medium">{agendamentoConfirmado.hora_inicio}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Fim</span>
+                      <span className="text-right text-white font-medium">{agendamentoConfirmado.hora_fim}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Valor</span>
+                      <span className="text-right text-white font-medium">{formatarPreco(agendamentoConfirmado.servico_preco)}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-10 space-y-3">
+                    <Link
+                      href="/"
+                      className="inline-flex w-full items-center justify-center px-6 py-3 bg-white text-black font-semibold hover:bg-gray-200 transition-colors"
+                    >
+                      Voltar
+                    </Link>
+                    <Link
+                      href="/meus-agendamentos"
+                      className="inline-flex w-full items-center justify-center px-6 py-3 border border-white/20 text-white hover:bg-white/10 transition-colors"
+                    >
+                      Ver meus agendamentos
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    )
   }
 
   return (
