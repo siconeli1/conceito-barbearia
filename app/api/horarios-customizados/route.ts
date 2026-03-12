@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { getBusyIntervals, overlaps, parseTimeToMinutes } from "@/lib/agenda-conflicts"
+import { normalizePhone } from "@/lib/phone"
 
 function getHorariosErrorMessage(error: { code?: string; message: string }) {
   if (error.code === "42P01") {
-    return 'Tabela "horarios_customizados" nao encontrada. Execute o arquivo create_horarios_table.sql no Supabase.'
+    return 'Tabela "horarios_customizados" nao encontrada. Execute a migracao de base.'
   }
 
   return error.message
@@ -54,7 +56,7 @@ export async function POST(req: Request) {
 
     if (!nome_cliente) {
       return NextResponse.json(
-        { erro: "Nome do cliente é obrigatório." },
+        { erro: "Nome do cliente e obrigatorio." },
         { status: 400 }
       )
     }
@@ -66,31 +68,41 @@ export async function POST(req: Request) {
       )
     }
 
-    const { data: existing, error: existingError } = await supabase
-      .from("horarios_customizados")
-      .select("id")
-      .eq("data", data)
-      .eq("hora_inicio", hora_inicio)
-      .eq("hora_fim", hora_fim)
-      .maybeSingle()
+    const inicio = parseTimeToMinutes(hora_inicio)
+    const fim = parseTimeToMinutes(hora_fim)
 
-    if (existingError) {
+    let busyState
+    try {
+      busyState = await getBusyIntervals(data)
+    } catch (error) {
       return NextResponse.json(
-        { erro: getHorariosErrorMessage(existingError) },
+        { erro: error instanceof Error ? error.message : "Erro ao validar conflitos." },
         { status: 500 }
       )
     }
 
-    if (existing) {
+    // Horario personalizado do admin ignora bloqueios e horario comercial.
+    // Ele so nao pode colidir com outro atendimento ja existente.
+    const temConflito = busyState.intervalos
+      .filter((intervalo) => intervalo.tipo === "agendamento" || intervalo.tipo === "horario_customizado")
+      .some((intervalo) => overlaps(inicio, fim, intervalo.inicio, intervalo.fim))
+
+    if (temConflito) {
       return NextResponse.json(
-        { erro: "Este horario ja foi cadastrado." },
-        { status: 400 }
+        { erro: "Existe conflito com outro agendamento ou horario personalizado." },
+        { status: 409 }
       )
     }
 
     const { data: horario, error } = await supabase
       .from("horarios_customizados")
-      .insert([{ data, hora_inicio, hora_fim, nome_cliente, celular_cliente: celular_cliente || null }])
+      .insert([{
+        data,
+        hora_inicio,
+        hora_fim,
+        nome_cliente,
+        celular_cliente: normalizePhone(celular_cliente) || null,
+      }])
       .select()
       .single()
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useReducer, useState } from "react"
 import Link from "next/link"
 import { type Servico } from "@/lib/servicos"
-import { Slot, formatarCelular, isDateBeyondLimit, isDateInPast } from "@/lib/format"
+import { Slot, formatarCelular, getTodayInputValue, isDateBeyondLimit, isDateInPast } from "@/lib/format"
 import { useDebounce } from "@/lib/hooks"
 
 interface ServicosResponse {
@@ -20,6 +20,7 @@ interface HorariosResponse {
 interface ReservaResponse {
   ok: boolean
   erro?: string
+  codigo_acesso?: string
 }
 
 interface AgendamentoConfirmado {
@@ -31,6 +32,7 @@ interface AgendamentoConfirmado {
   servico_nome: string
   servico_duracao: number
   servico_preco: number
+  codigo_acesso: string
 }
 
 interface FormState {
@@ -232,6 +234,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
         servico_nome: servicoSelecionado.nome,
         servico_duracao: servicoSelecionado.duracao_minutos,
         servico_preco: Number(servicoSelecionado.preco),
+        codigo_acesso: json.codigo_acesso || "",
       })
       dispatch({ type: "reset" })
       setData("")
@@ -338,7 +341,15 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                       <span className="text-gray-500">Valor</span>
                       <span className="text-right text-white font-medium">{formatarPreco(agendamentoConfirmado.servico_preco)}</span>
                     </div>
+                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
+                      <span className="text-gray-500">Codigo de acesso</span>
+                      <span className="text-right text-white font-medium tracking-[0.3em]">{agendamentoConfirmado.codigo_acesso}</span>
+                    </div>
                   </div>
+
+                  <p className="mt-6 text-sm text-gray-400">
+                    Guarde esse codigo. Ele sera exigido para consultar ou cancelar seus agendamentos.
+                  </p>
 
                   <div className="mt-10 space-y-3">
                     <Link
@@ -348,7 +359,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                       Voltar
                     </Link>
                     <Link
-                      href="/meus-agendamentos"
+                      href={`/meus-agendamentos?celular=${encodeURIComponent(agendamentoConfirmado.celular)}&codigo=${encodeURIComponent(agendamentoConfirmado.codigo_acesso)}`}
                       className="inline-flex w-full items-center justify-center px-6 py-3 border border-white/20 text-white hover:bg-white/10 transition-colors"
                     >
                       Ver meus agendamentos
@@ -474,7 +485,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
               className={`datetime-input w-full px-4 py-4 sm:px-4 sm:py-3 border rounded text-white placeholder-gray-500 focus:outline-none transition-colors text-base sm:text-sm ${
                 dateInvalid ? "border-red-600" : "border-white/20"
               }`}
-              min={new Date().toISOString().split("T")[0]}
+              min={getTodayInputValue()}
             />
             {data && (
               <div className="text-sm text-gray-400 mt-2">

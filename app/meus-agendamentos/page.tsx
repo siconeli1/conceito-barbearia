@@ -1,8 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useReducer, useState } from "react"
+import { Suspense, useEffect, useReducer } from "react"
 import Link from "next/link"
-import { formatarDataISO, formatarHora } from "../../lib/format"
+import { useSearchParams } from "next/navigation"
+import { formatarCelular, formatarDataISO, formatarHora } from "@/lib/format"
+import { normalizePhone } from "@/lib/phone"
 
 interface Agendamento {
   id: string
@@ -13,7 +15,11 @@ interface Agendamento {
   celular_cliente: string
   servico_nome?: string
   servico_preco?: number
+  valor_final?: number
   status: "ativo" | "cancelado"
+  status_agendamento?: "agendado" | "confirmado" | "cancelado" | "no_show"
+  status_atendimento?: "pendente" | "em_atendimento" | "concluido"
+  status_pagamento?: "pendente" | "pago" | "estornado"
 }
 
 interface SearchResponse {
@@ -22,12 +28,13 @@ interface SearchResponse {
 }
 
 interface CancelResponse {
-  ok: boolean
+  ok?: boolean
   erro?: string
 }
 
 interface FormState {
   celular: string
+  codigo: string
   agendamentos: Agendamento[]
   msg: string
   erro: string
@@ -36,16 +43,18 @@ interface FormState {
 
 type FormAction =
   | { type: "setCelular"; value: string }
+  | { type: "setCodigo"; value: string }
   | { type: "setAgendamentos"; value: Agendamento[] }
   | { type: "setMsg"; value: string }
   | { type: "setErro"; value: string }
   | { type: "setLoading"; value: boolean }
-  | { type: "reset" }
 
 function formReducer(state: FormState, action: FormAction): FormState {
   switch (action.type) {
     case "setCelular":
       return { ...state, celular: action.value }
+    case "setCodigo":
+      return { ...state, codigo: action.value.toUpperCase() }
     case "setAgendamentos":
       return { ...state, agendamentos: action.value }
     case "setMsg":
@@ -54,31 +63,45 @@ function formReducer(state: FormState, action: FormAction): FormState {
       return { ...state, erro: action.value }
     case "setLoading":
       return { ...state, loading: action.value }
-    case "reset":
-      return { celular: "", agendamentos: [], msg: "", erro: "", loading: false }
     default:
       return state
   }
 }
 
 export default function MeusAgendamentosPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-black text-white flex items-center justify-center">Carregando...</main>}>
+      <MeusAgendamentosContent />
+    </Suspense>
+  )
+}
+
+function MeusAgendamentosContent() {
+  const searchParams = useSearchParams()
   const [form, dispatch] = useReducer(formReducer, {
     celular: "",
+    codigo: "",
     agendamentos: [],
     msg: "",
     erro: "",
     loading: false,
   })
 
-  const agendamentosAtivos = form.agendamentos.filter((a) => a.status === "ativo")
-  const agendamentosCancelados = form.agendamentos
-    .filter((a) => a.status === "cancelado")
-    .sort((a, b) => {
-      const dataA = `${a.data}T${a.hora_inicio}`
-      const dataB = `${b.data}T${b.hora_inicio}`
-      return new Date(dataB).getTime() - new Date(dataA).getTime()
-    })
-    .slice(0, 5)
+  useEffect(() => {
+    const celularParam = searchParams.get("celular")
+    const codigoParam = searchParams.get("codigo")
+
+    if (celularParam) {
+      dispatch({ type: "setCelular", value: formatarCelular(celularParam) })
+    }
+
+    if (codigoParam) {
+      dispatch({ type: "setCodigo", value: codigoParam })
+    }
+  }, [searchParams])
+
+  const agendamentosAtivos = form.agendamentos.filter((item) => item.status_agendamento !== "cancelado" && item.status !== "cancelado")
+  const agendamentosCancelados = form.agendamentos.filter((item) => item.status_agendamento === "cancelado" || item.status === "cancelado")
 
   function formatarPreco(valor?: number) {
     return Number(valor ?? 0).toLocaleString("pt-BR", {
@@ -87,9 +110,19 @@ export default function MeusAgendamentosPage() {
     })
   }
 
+  function getStatusLabel(agendamento: Agendamento) {
+    if (agendamento.status_agendamento === "cancelado" || agendamento.status === "cancelado") return "Cancelado"
+    if (agendamento.status_agendamento === "no_show") return "Nao compareceu"
+    if (agendamento.status_pagamento === "pago") return "Pago"
+    if (agendamento.status_atendimento === "concluido") return "Concluido"
+    if (agendamento.status_atendimento === "em_atendimento") return "Em atendimento"
+    if (agendamento.status_agendamento === "confirmado") return "Confirmado"
+    return "Agendado"
+  }
+
   async function buscar() {
-    if (!form.celular) {
-      dispatch({ type: "setErro", value: "Digite seu celular" })
+    if (!form.celular || !form.codigo) {
+      dispatch({ type: "setErro", value: "Digite celular e codigo de acesso" })
       return
     }
 
@@ -98,7 +131,9 @@ export default function MeusAgendamentosPage() {
     dispatch({ type: "setMsg", value: "" })
 
     try {
-      const res = await fetch(`/api/meus-agendamentos?celular=${form.celular}`)
+      const celular = normalizePhone(form.celular)
+      const codigo = form.codigo.trim().toUpperCase()
+      const res = await fetch(`/api/meus-agendamentos?celular=${celular}&codigo=${codigo}`)
       const json: SearchResponse = await res.json()
 
       if (!res.ok) {
@@ -123,7 +158,11 @@ export default function MeusAgendamentosPage() {
       const res = await fetch("/api/cancelar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({
+          id,
+          celular: normalizePhone(form.celular),
+          codigo: form.codigo.trim().toUpperCase(),
+        }),
       })
 
       const json: CancelResponse = await res.json()
@@ -134,7 +173,7 @@ export default function MeusAgendamentosPage() {
       }
 
       dispatch({ type: "setMsg", value: "Agendamento cancelado com sucesso" })
-      buscar()
+      await buscar()
     } catch {
       dispatch({ type: "setErro", value: "Erro ao conectar com o servidor" })
     } finally {
@@ -145,7 +184,6 @@ export default function MeusAgendamentosPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Header */}
         <div className="text-center mb-12 border-b border-white/10 pb-12">
           <Link
             href="/"
@@ -157,10 +195,9 @@ export default function MeusAgendamentosPage() {
             Voltar
           </Link>
           <h1 className="text-3xl sm:text-4xl font-bold mb-2">Meus Agendamentos</h1>
-          <p className="text-gray-400 text-lg">Consulte e cancele seus agendamentos</p>
+          <p className="text-gray-400 text-lg">Consulte e cancele usando seu celular e codigo de acesso</p>
         </div>
 
-        {/* Messages */}
         {form.erro && (
           <div className="mb-6 p-4 bg-red-950 border border-red-700 rounded">
             <p className="text-red-300">{form.erro}</p>
@@ -173,18 +210,23 @@ export default function MeusAgendamentosPage() {
           </div>
         )}
 
-        {/* Search */}
-        <div className="mb-12">
-          <label className="block text-sm font-semibold text-white mb-4">Buscar por Celular</label>
-          <div className="flex gap-3">
+        <div className="mb-12 border border-white/10 rounded p-6 space-y-4">
+          <div className="grid sm:grid-cols-[1fr_180px_auto] gap-3">
             <input
               type="tel"
               value={form.celular}
-              onChange={(e) => dispatch({ type: "setCelular", value: e.target.value })}
+              onChange={(e) => dispatch({ type: "setCelular", value: formatarCelular(e.target.value) })}
               placeholder="(11) 99999-9999"
               maxLength={15}
-              className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors"
-              onKeyDown={(e) => e.key === "Enter" && buscar()}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors"
+            />
+            <input
+              type="text"
+              value={form.codigo}
+              onChange={(e) => dispatch({ type: "setCodigo", value: e.target.value })}
+              placeholder="Codigo"
+              maxLength={8}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors uppercase tracking-[0.2em]"
             />
             <button
               onClick={buscar}
@@ -194,18 +236,20 @@ export default function MeusAgendamentosPage() {
               {form.loading ? "Buscando..." : "Buscar"}
             </button>
           </div>
+
+          <p className="text-sm text-gray-400">
+            O codigo aparece na confirmacao do agendamento. Ele protege seus dados contra consultas por terceiros.
+          </p>
         </div>
 
-        {/* Results */}
-        {form.agendamentos.length === 0 && form.celular && !form.loading && (
+        {form.agendamentos.length === 0 && form.celular && form.codigo && !form.loading && (
           <div className="text-center py-12 border border-white/10 rounded">
             <p className="text-gray-400">Nenhum agendamento encontrado</p>
           </div>
         )}
 
-        {/* Agendamentos Ativos */}
         {agendamentosAtivos.length > 0 && (
-          <div className="mb-12">
+          <section className="mb-12">
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
               Agendamentos Ativos ({agendamentosAtivos.length})
             </h2>
@@ -215,34 +259,31 @@ export default function MeusAgendamentosPage() {
                   key={agendamento.id}
                   className="p-6 border border-white/20 rounded hover:border-white/40 transition-colors"
                 >
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="flex justify-between gap-4 mb-4">
                     <div>
-                      <p className="text-sm text-gray-400 mb-1">Data</p>
                       <p className="text-white font-semibold">{formatarDataISO(agendamento.data)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Horário</p>
-                      <p className="text-white font-semibold">
+                      <p className="text-gray-400">
                         {formatarHora(agendamento.hora_inicio)} - {formatarHora(agendamento.hora_fim)}
                       </p>
                     </div>
+                    <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 border border-white/15 px-3 py-2 h-fit">
+                      {getStatusLabel(agendamento)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
                     <div>
-                      <p className="text-sm text-gray-400 mb-1">Nome</p>
-                      <p className="text-white font-semibold">{agendamento.nome_cliente}</p>
+                      <p className="text-gray-400 mb-1">Servico</p>
+                      <p className="text-white font-semibold">{agendamento.servico_nome || "Nao informado"}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-400 mb-1">Celular</p>
-                      <p className="text-white font-semibold">{agendamento.celular_cliente}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Serviço</p>
-                      <p className="text-white font-semibold">{agendamento.servico_nome || "Não informado"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Valor</p>
-                      <p className="text-green-400 font-semibold">{formatarPreco(agendamento.servico_preco)}</p>
+                      <p className="text-gray-400 mb-1">Valor</p>
+                      <p className="text-green-400 font-semibold">
+                        {formatarPreco(agendamento.valor_final ?? agendamento.servico_preco)}
+                      </p>
                     </div>
                   </div>
+
                   <button
                     onClick={() => cancelar(agendamento.id)}
                     disabled={form.loading}
@@ -253,160 +294,33 @@ export default function MeusAgendamentosPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Agendamentos Cancelados */}
         {agendamentosCancelados.length > 0 && (
-          <div>
+          <section>
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Agendamentos Cancelados ({agendamentosCancelados.length})
+              Historico ({agendamentosCancelados.length})
             </h2>
             <div className="space-y-4">
               {agendamentosCancelados.map((agendamento) => (
-                <div
-                  key={agendamento.id}
-                  className="p-6 border border-white/10 rounded opacity-70"
-                >
-                  <div className="grid grid-cols-2 gap-4">
+                <div key={agendamento.id} className="p-6 border border-white/10 rounded opacity-70">
+                  <div className="flex justify-between gap-4">
                     <div>
-                      <p className="text-sm text-gray-400 mb-1">Data</p>
                       <p className="text-gray-300">{formatarDataISO(agendamento.data)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Horário</p>
-                      <p className="text-gray-300">
+                      <p className="text-gray-400">
                         {formatarHora(agendamento.hora_inicio)} - {formatarHora(agendamento.hora_fim)}
                       </p>
+                      <p className="text-gray-300 mt-2">{agendamento.servico_nome || "Nao informado"}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Nome</p>
-                      <p className="text-gray-300">{agendamento.nome_cliente}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Celular</p>
-                      <p className="text-gray-300">{agendamento.celular_cliente}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Serviço</p>
-                      <p className="text-gray-300">{agendamento.servico_nome || "Não informado"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 mb-1">Valor</p>
-                      <p className="text-gray-300">{formatarPreco(agendamento.servico_preco)}</p>
-                    </div>
+                    <span className="text-sm text-gray-400">{getStatusLabel(agendamento)}</span>
                   </div>
-                  <div className="text-sm text-gray-400 mt-4">Cancelado</div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </div>
     </main>
-  )
-}
-
-// Componente para card com swipe to cancel
-function SwipeToCancelCard({
-  agendamento,
-  onCancel,
-  isCanceling
-}: {
-  agendamento: Agendamento
-  onCancel: () => void
-  isCanceling: boolean
-}) {
-  const [swipeOffset, setSwipeOffset] = useState(0)
-  const [startX, setStartX] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setStartX(e.touches[0].clientX)
-    setIsDragging(true)
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging) return
-
-    const currentX = e.touches[0].clientX
-    const diff = startX - currentX
-
-    // Só permite swipe para esquerda (diff > 0)
-    if (diff > 0) {
-      setSwipeOffset(Math.min(diff, 80)) // Máximo 80px
-    }
-  }
-
-  const handleTouchEnd = () => {
-    setIsDragging(false)
-
-    if (swipeOffset > 40) {
-      // Swipe suficiente, revela botão
-      setSwipeOffset(80)
-    } else {
-      // Volta ao normal
-      setSwipeOffset(0)
-    }
-  }
-
-  const handleCancelClick = () => {
-    onCancel()
-    setSwipeOffset(0) // Fecha o swipe após cancelar
-  }
-
-  return (
-    <div className="relative overflow-hidden bg-white/5 border border-white/10 rounded-lg">
-      {/* Botão de cancelar (revelado pelo swipe) */}
-      <div
-        className="absolute right-0 top-0 h-full w-20 bg-red-600 flex items-center justify-center transition-transform duration-200"
-        style={{ transform: `translateX(${80 - swipeOffset}px)` }}
-      >
-        <button
-          onClick={handleCancelClick}
-          disabled={isCanceling}
-          className="text-white font-semibold disabled:opacity-50"
-        >
-          {isCanceling ? "..." : "Cancelar"}
-        </button>
-      </div>
-
-      {/* Card principal */}
-      <div
-        className="p-6 transition-transform duration-200"
-        style={{ transform: `translateX(-${swipeOffset}px)` }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-1">
-              {formatarDataISO(agendamento.data)}
-            </h3>
-            <p className="text-gray-400">
-              {formatarHora(agendamento.hora_inicio)} - {agendamento.nome_cliente}
-            </p>
-            <p className="text-gray-400 text-sm">
-              {agendamento.celular_cliente}
-            </p>
-          </div>
-          <div className="text-right">
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-              agendamento.status === 'ativo'
-                ? 'bg-green-900 text-green-300'
-                : 'bg-red-900 text-red-300'
-            }`}>
-              {agendamento.status === 'ativo' ? 'Ativo' : 'Cancelado'}
-            </span>
-          </div>
-        </div>
-
-        {/* Hint para swipe */}
-        <div className="text-xs text-gray-500 text-center">
-          Deslize para a esquerda para cancelar
-        </div>
-      </div>
-    </div>
   )
 }
