@@ -38,7 +38,7 @@ DROP CONSTRAINT IF EXISTS agendamentos_servico_duracao_check;
 
 ALTER TABLE public.agendamentos
 ADD CONSTRAINT agendamentos_servico_duracao_check
-CHECK (servico_duracao_minutos IN (30, 60));
+CHECK (servico_duracao_minutos > 0);
 
 -- 5) Constraint de preco
 ALTER TABLE public.agendamentos

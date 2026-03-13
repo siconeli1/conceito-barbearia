@@ -20,7 +20,6 @@ interface HorariosResponse {
 interface ReservaResponse {
   ok: boolean
   erro?: string
-  codigo_acesso?: string
 }
 
 interface AgendamentoConfirmado {
@@ -32,7 +31,6 @@ interface AgendamentoConfirmado {
   servico_nome: string
   servico_duracao: number
   servico_preco: number
-  codigo_acesso: string
 }
 
 interface FormState {
@@ -87,10 +85,10 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
   const outOfRange = iso ? isDateBeyondLimit(iso, 30) : false
 
   const dayNumber = data ? new Date(`${data}T00:00:00`).getDay() : -1
-  const isMonday = dayNumber === 1
+  const isSaturday = dayNumber === 6
   const isSunday = dayNumber === 0
-  const closedMessage = isSunday ? "Fechado aos domingos" : isMonday ? "Fechado às segundas-feiras" : ""
-  const isClosedDay = isMonday || isSunday
+  const closedMessage = isSunday ? "Fechado aos domingos" : isSaturday ? "Fechado aos sábados" : ""
+  const isClosedDay = isSaturday || isSunday
   const servicoSelecionado = servicos.find((servico) => servico.id === servicoSelecionadoId) ?? null
 
   const [slots, setSlots] = useState<Slot[]>([])
@@ -234,7 +232,6 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
         servico_nome: servicoSelecionado.nome,
         servico_duracao: servicoSelecionado.duracao_minutos,
         servico_preco: Number(servicoSelecionado.preco),
-        codigo_acesso: json.codigo_acesso || "",
       })
       dispatch({ type: "reset" })
       setData("")
@@ -341,14 +338,10 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                       <span className="text-gray-500">Valor</span>
                       <span className="text-right text-white font-medium">{formatarPreco(agendamentoConfirmado.servico_preco)}</span>
                     </div>
-                    <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
-                      <span className="text-gray-500">Codigo de acesso</span>
-                      <span className="text-right text-white font-medium tracking-[0.3em]">{agendamentoConfirmado.codigo_acesso}</span>
-                    </div>
                   </div>
 
                   <p className="mt-6 text-sm text-gray-400">
-                    Guarde esse codigo. Ele sera exigido para consultar ou cancelar seus agendamentos.
+                    Para consultar ou cancelar depois, use apenas o celular informado neste agendamento.
                   </p>
 
                   <div className="mt-10 space-y-3">
@@ -359,7 +352,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                       Voltar
                     </Link>
                     <Link
-                      href={`/meus-agendamentos?celular=${encodeURIComponent(agendamentoConfirmado.celular)}&codigo=${encodeURIComponent(agendamentoConfirmado.codigo_acesso)}`}
+                      href={`/meus-agendamentos?celular=${encodeURIComponent(agendamentoConfirmado.celular)}`}
                       className="inline-flex w-full items-center justify-center px-6 py-3 border border-white/20 text-white hover:bg-white/10 transition-colors"
                     >
                       Ver meus agendamentos
@@ -492,13 +485,16 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                 {pastDate && <span className="text-red-400">Data no passado</span>}
                 {outOfRange && <span className="text-red-400">Data fora do intervalo (máx. 30 dias)</span>}
                 {isClosedDay && <span className="text-red-400">{closedMessage}</span>}
-                {!pastDate && !outOfRange && !isClosedDay && <span className="text-green-400">✓ Data válida</span>}
+                {!pastDate && !outOfRange && !isClosedDay && <span className="text-green-400">Data válida. Atendimento das 08:30 às 12:00 e das 14:00 às 20:00, com último início às 19:00.</span>}
               </div>
             )}
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-white mb-4">Horário</label>
+            {servicoSelecionado && !carregandoHorarios && (
+              <p className="text-sm text-gray-400 mb-4">Mostrando os principais horários disponíveis para facilitar sua escolha.</p>
+            )}
             {!servicoSelecionado && <p className="text-gray-400">Escolha um serviço para ver horários</p>}
             {carregandoHorarios && servicoSelecionado && <p className="text-gray-400">Carregando horários...</p>}
             {!carregandoHorarios && slots.length === 0 && data && !pastDate && !outOfRange && servicoSelecionado && (

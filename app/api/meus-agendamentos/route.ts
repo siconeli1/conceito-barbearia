@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { syncAutoClosedAgendamentos } from "@/lib/agendamento"
-import { getCustomerAccessCode, normalizePhone } from "@/lib/phone"
+import { normalizePhone } from "@/lib/phone"
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -12,20 +12,11 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const celular = normalizePhone(searchParams.get("celular"))
-    const codigo = String(searchParams.get("codigo") ?? "").trim().toUpperCase()
 
-    if (!celular || !codigo) {
+    if (!celular) {
       return NextResponse.json(
-        { erro: "Celular e codigo de acesso sao obrigatorios" },
+        { erro: "Celular obrigatorio" },
         { status: 400 }
-      )
-    }
-
-    const codigoEsperado = await getCustomerAccessCode(celular)
-    if (codigo !== codigoEsperado) {
-      return NextResponse.json(
-        { erro: "Codigo de acesso invalido" },
-        { status: 401 }
       )
     }
 

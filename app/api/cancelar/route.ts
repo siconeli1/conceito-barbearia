@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { ADMIN_SESSION_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/admin-session"
-import { getCustomerAccessCode, normalizePhone } from "@/lib/phone"
+import { normalizePhone } from "@/lib/phone"
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -14,7 +14,6 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { id } = body
     const celular = normalizePhone(body?.celular)
-    const codigo = String(body?.codigo ?? "").trim().toUpperCase()
 
     if (!id) {
       return NextResponse.json(
@@ -48,15 +47,14 @@ export async function POST(req: Request) {
     }
 
     if (!isAdmin) {
-      if (!celular || !codigo) {
+      if (!celular) {
         return NextResponse.json(
-          { erro: "Celular e codigo de acesso sao obrigatorios" },
+          { erro: "Celular obrigatorio" },
           { status: 401 }
         )
       }
 
-      const codigoEsperado = await getCustomerAccessCode(celular)
-      if (codigo !== codigoEsperado || normalizePhone(agendamento.celular_cliente) !== celular) {
+      if (normalizePhone(agendamento.celular_cliente) !== celular) {
         return NextResponse.json(
           { erro: "Nao autorizado a cancelar este agendamento" },
           { status: 403 }

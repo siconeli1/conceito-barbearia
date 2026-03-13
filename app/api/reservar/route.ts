@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { AGENDA_CONFIG, generateSlots, minutesToTime, timeToMinutes } from '@/lib/agenda'
+import { AGENDA_CONFIG, generateCandidateStartTimes, isAppointmentWithinSchedule, minutesToTime, timeToMinutes } from '@/lib/agenda'
 import { calcularValorFinal } from '@/lib/agendamento'
 import { getBusyIntervals } from '@/lib/agenda-conflicts'
-import { getCustomerAccessCode, isValidPhone, normalizePhone } from '@/lib/phone'
+import { isValidPhone, normalizePhone } from '@/lib/phone'
+import { encontrarServicoAtivo } from '@/lib/servicos'
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
@@ -33,20 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: 'Data fora do funcionamento' }, { status: 400 })
   }
 
-  const servicoQuery = supabase
-    .from('servicos')
-    .select('id, codigo, nome, duracao_minutos, preco, ativo')
-    .eq('ativo', true)
-
-  const { data: servicos, error: servicoError } = await (servicoId
-    ? servicoQuery.eq('id', servicoId)
-    : servicoQuery.eq('codigo', servicoCodigo!))
-
-  if (servicoError) {
-    return NextResponse.json({ erro: servicoError.message }, { status: 500 })
-  }
-
-  const servico = servicos?.[0]
+  const servico = await encontrarServicoAtivo({ id: servicoId, codigo: servicoCodigo })
   if (!servico) {
     return NextResponse.json({ erro: 'Servico invalido ou inativo' }, { status: 400 })
   }
@@ -56,18 +44,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: 'Duracao do servico invalida' }, { status: 400 })
   }
 
-  const slots = generateSlots(day)
-  const slotInicial = slots.find((slot) => slot.hora_inicio === hora_inicio)
-  if (!slotInicial) {
-    return NextResponse.json({ erro: 'Horario invalido' }, { status: 400 })
-  }
-
-  const inicioAgenda = timeToMinutes(slots[0].hora_inicio)
-  const fimAgenda = timeToMinutes(slots[slots.length - 1].hora_fim)
   const inicioReserva = timeToMinutes(hora_inicio)
   const fimReserva = inicioReserva + duracao
 
-  if (inicioReserva < inicioAgenda || fimReserva > fimAgenda) {
+  if (!isAppointmentWithinSchedule(day, inicioReserva, duracao)) {
     return NextResponse.json(
       { erro: 'Nao ha tempo suficiente para este servico nesse horario' },
       { status: 409 }
@@ -86,6 +66,12 @@ export async function POST(req: Request) {
 
   if (busyState.bloqueioDiaInteiro || busyState.naoAceitarMais) {
     return NextResponse.json({ erro: 'Data indisponivel para agendamento' }, { status: 409 })
+  }
+
+  const horariosDisponiveis = new Set(generateCandidateStartTimes(day, duracao, busyState.intervalos))
+
+  if (!horariosDisponiveis.has(inicioReserva)) {
+    return NextResponse.json({ erro: 'Horario invalido para este servico' }, { status: 409 })
   }
 
   const temConflito = busyState.intervalos.some(
@@ -108,7 +94,7 @@ export async function POST(req: Request) {
       hora_fim: minutesToTime(fimReserva),
       nome_cliente,
       celular_cliente,
-      servico_id: servico.id,
+      servico_id: servico.db_id ?? null,
       servico_nome: servico.nome,
       servico_duracao_minutos: duracao,
       servico_preco: valorTabela,
@@ -138,7 +124,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: error.message }, { status: 500 })
   }
 
-  const codigo_acesso = await getCustomerAccessCode(celular_cliente)
-
-  return NextResponse.json({ ok: true, agendamento: inserted, codigo_acesso })
+  return NextResponse.json({ ok: true, agendamento: inserted })
 }

@@ -77,14 +77,15 @@ export default function Home() {
       {/* Hours Section */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <h2 className="text-3xl font-semibold text-center mb-12">Horários</h2>
-        <div className="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto text-center">
+        <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto text-center">
           <div className="border-l border-white/20 pl-8">
-            <p className="text-gray-400 mb-2">Terça a Sexta</p>
-            <p className="text-2xl font-semibold">09:00 - 20:00</p>
+            <p className="text-gray-400 mb-2">Segunda a Sexta</p>
+            <p className="text-2xl font-semibold">08:30 - 12:00</p>
           </div>
           <div className="border-l border-white/20 pl-8">
-            <p className="text-gray-400 mb-2">Sábado</p>
-            <p className="text-2xl font-semibold">08:30 - 14:00</p>
+            <p className="text-gray-400 mb-2">Retorno e encerramento</p>
+            <p className="text-2xl font-semibold">14:00 - 20:00</p>
+            <p className="text-sm text-gray-500 mt-2">Ultimo horario para iniciar atendimento: 19:00</p>
           </div>
         </div>
       </div>

@@ -34,7 +34,6 @@ interface CancelResponse {
 
 interface FormState {
   celular: string
-  codigo: string
   agendamentos: Agendamento[]
   msg: string
   erro: string
@@ -43,7 +42,6 @@ interface FormState {
 
 type FormAction =
   | { type: "setCelular"; value: string }
-  | { type: "setCodigo"; value: string }
   | { type: "setAgendamentos"; value: Agendamento[] }
   | { type: "setMsg"; value: string }
   | { type: "setErro"; value: string }
@@ -53,8 +51,6 @@ function formReducer(state: FormState, action: FormAction): FormState {
   switch (action.type) {
     case "setCelular":
       return { ...state, celular: action.value }
-    case "setCodigo":
-      return { ...state, codigo: action.value.toUpperCase() }
     case "setAgendamentos":
       return { ...state, agendamentos: action.value }
     case "setMsg":
@@ -80,7 +76,6 @@ function MeusAgendamentosContent() {
   const searchParams = useSearchParams()
   const [form, dispatch] = useReducer(formReducer, {
     celular: "",
-    codigo: "",
     agendamentos: [],
     msg: "",
     erro: "",
@@ -89,14 +84,9 @@ function MeusAgendamentosContent() {
 
   useEffect(() => {
     const celularParam = searchParams.get("celular")
-    const codigoParam = searchParams.get("codigo")
 
     if (celularParam) {
       dispatch({ type: "setCelular", value: formatarCelular(celularParam) })
-    }
-
-    if (codigoParam) {
-      dispatch({ type: "setCodigo", value: codigoParam })
     }
   }, [searchParams])
 
@@ -121,8 +111,8 @@ function MeusAgendamentosContent() {
   }
 
   async function buscar() {
-    if (!form.celular || !form.codigo) {
-      dispatch({ type: "setErro", value: "Digite celular e codigo de acesso" })
+    if (!form.celular) {
+      dispatch({ type: "setErro", value: "Digite seu celular" })
       return
     }
 
@@ -132,8 +122,7 @@ function MeusAgendamentosContent() {
 
     try {
       const celular = normalizePhone(form.celular)
-      const codigo = form.codigo.trim().toUpperCase()
-      const res = await fetch(`/api/meus-agendamentos?celular=${celular}&codigo=${codigo}`)
+      const res = await fetch(`/api/meus-agendamentos?celular=${celular}`)
       const json: SearchResponse = await res.json()
 
       if (!res.ok) {
@@ -161,7 +150,6 @@ function MeusAgendamentosContent() {
         body: JSON.stringify({
           id,
           celular: normalizePhone(form.celular),
-          codigo: form.codigo.trim().toUpperCase(),
         }),
       })
 
@@ -195,7 +183,7 @@ function MeusAgendamentosContent() {
             Voltar
           </Link>
           <h1 className="text-3xl sm:text-4xl font-bold mb-2">Meus Agendamentos</h1>
-          <p className="text-gray-400 text-lg">Consulte e cancele usando seu celular e codigo de acesso</p>
+          <p className="text-gray-400 text-lg">Consulte e cancele usando apenas seu celular</p>
         </div>
 
         {form.erro && (
@@ -211,7 +199,7 @@ function MeusAgendamentosContent() {
         )}
 
         <div className="mb-12 border border-white/10 rounded p-6 space-y-4">
-          <div className="grid sm:grid-cols-[1fr_180px_auto] gap-3">
+          <div className="grid sm:grid-cols-[1fr_auto] gap-3">
             <input
               type="tel"
               value={form.celular}
@@ -219,14 +207,6 @@ function MeusAgendamentosContent() {
               placeholder="(11) 99999-9999"
               maxLength={15}
               className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors"
-            />
-            <input
-              type="text"
-              value={form.codigo}
-              onChange={(e) => dispatch({ type: "setCodigo", value: e.target.value })}
-              placeholder="Codigo"
-              maxLength={8}
-              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors uppercase tracking-[0.2em]"
             />
             <button
               onClick={buscar}
@@ -238,11 +218,11 @@ function MeusAgendamentosContent() {
           </div>
 
           <p className="text-sm text-gray-400">
-            O codigo aparece na confirmacao do agendamento. Ele protege seus dados contra consultas por terceiros.
+            Digite o mesmo celular usado no agendamento para consultar ou cancelar seus horarios.
           </p>
         </div>
 
-        {form.agendamentos.length === 0 && form.celular && form.codigo && !form.loading && (
+        {form.agendamentos.length === 0 && form.celular && !form.loading && (
           <div className="text-center py-12 border border-white/10 rounded">
             <p className="text-gray-400">Nenhum agendamento encontrado</p>
           </div>

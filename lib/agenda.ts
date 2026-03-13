@@ -1,28 +1,58 @@
-// lib/agenda.ts
+export type DailyPeriod = {
+  start: string
+  end: string
+}
 
-// configurações da agenda. usamos um mapa por dia da semana para
-// permitir horários diferentes ao longo da semana.
-// as chaves são números do dia (0=domingo, 6=sábado).
-export const DAILY_SCHEDULE: Record<number, { start: string; end: string }> = {
-  // terça a sexta das 09:00 às 20:00
-  2: { start: '09:00', end: '20:00' },
-  3: { start: '09:00', end: '20:00' },
-  4: { start: '09:00', end: '20:00' },
-  5: { start: '09:00', end: '20:00' },
+export type DailySchedule = {
+  periods: DailyPeriod[]
+  lastStart: string
+}
 
-  // sábado das 08:30 às 14:00
-  6: { start: '08:30', end: '14:00' },
+export const DAILY_SCHEDULE: Record<number, DailySchedule> = {
+  1: {
+    periods: [
+      { start: '08:30', end: '12:00' },
+      { start: '14:00', end: '20:00' },
+    ],
+    lastStart: '19:00',
+  },
+  2: {
+    periods: [
+      { start: '08:30', end: '12:00' },
+      { start: '14:00', end: '20:00' },
+    ],
+    lastStart: '19:00',
+  },
+  3: {
+    periods: [
+      { start: '08:30', end: '12:00' },
+      { start: '14:00', end: '20:00' },
+    ],
+    lastStart: '19:00',
+  },
+  4: {
+    periods: [
+      { start: '08:30', end: '12:00' },
+      { start: '14:00', end: '20:00' },
+    ],
+    lastStart: '19:00',
+  },
+  5: {
+    periods: [
+      { start: '08:30', end: '12:00' },
+      { start: '14:00', end: '20:00' },
+    ],
+    lastStart: '19:00',
+  },
 }
 
 export const AGENDA_CONFIG = {
   timezone: 'America/Sao_Paulo',
-  // dias que abre são as chaves definidas no mapa acima
   openDays: Object.keys(DAILY_SCHEDULE).map((d) => Number(d)),
-  // duração padrão do atendimento (em minutos)
-  slotMinutes: 30,
+  slotMinutes: 10,
+  visibleSlotMinutes: 20,
 }
 
-// Helpers
 export function timeToMinutes(hhmm: string) {
   const [h, m] = hhmm.split(':').map(Number)
   return h * 60 + m
@@ -34,24 +64,128 @@ export function minutesToTime(total: number) {
   return `${h}:${m}`
 }
 
-export function generateSlots(day: number) {
-  const schedule = DAILY_SCHEDULE[day]
+export function getScheduleForDay(day: number) {
+  return DAILY_SCHEDULE[day] ?? null
+}
+
+export function getScheduleBounds(day: number) {
+  const schedule = getScheduleForDay(day)
+
+  if (!schedule) {
+    return null
+  }
+
+  const firstPeriod = schedule.periods[0]
+  const lastPeriod = schedule.periods[schedule.periods.length - 1]
+
+  return {
+    start: timeToMinutes(firstPeriod.start),
+    end: timeToMinutes(lastPeriod.end),
+    lastStart: timeToMinutes(schedule.lastStart),
+  }
+}
+
+export function isAppointmentWithinSchedule(day: number, startMinutes: number, durationMinutes: number) {
+  const schedule = getScheduleForDay(day)
+
+  if (!schedule) {
+    return false
+  }
+
+  const endMinutes = startMinutes + durationMinutes
+  const lastStart = timeToMinutes(schedule.lastStart)
+
+  if (startMinutes > lastStart) {
+    return false
+  }
+
+  return schedule.periods.some((period) => {
+    const periodStart = timeToMinutes(period.start)
+    const periodEnd = timeToMinutes(period.end)
+
+    return startMinutes >= periodStart && endMinutes <= periodEnd
+  })
+}
+
+export function generateSlots(day: number, durationMinutes = AGENDA_CONFIG.slotMinutes) {
+  const schedule = getScheduleForDay(day)
+
   if (!schedule) {
     return []
   }
 
-  const start = timeToMinutes(schedule.start)
-  const end = timeToMinutes(schedule.end)
   const step = AGENDA_CONFIG.slotMinutes
-
+  const lastStart = timeToMinutes(schedule.lastStart)
   const slots: { hora_inicio: string; hora_fim: string }[] = []
-  for (let t = start; t + step <= end; t += step) {
-    slots.push({
-      hora_inicio: minutesToTime(t),
-      hora_fim: minutesToTime(t + step),
-    })
+
+  for (const period of schedule.periods) {
+    const start = timeToMinutes(period.start)
+    const end = timeToMinutes(period.end)
+    const maxStart = Math.min(lastStart, end - durationMinutes)
+
+    for (let t = start; t <= maxStart; t += step) {
+      slots.push({
+        hora_inicio: minutesToTime(t),
+        hora_fim: minutesToTime(t + durationMinutes),
+      })
+    }
   }
+
   return slots
+}
+
+export function generateCandidateStartTimes(
+  day: number,
+  durationMinutes: number,
+  busyIntervals: Array<{ inicio: number; fim: number }> = []
+) {
+  const schedule = getScheduleForDay(day)
+
+  if (!schedule) {
+    return []
+  }
+
+  const gridStarts = generateSlots(day, durationMinutes).map((slot) => timeToMinutes(slot.hora_inicio))
+  const dynamicStarts = busyIntervals.flatMap((intervalo) => [intervalo.inicio, intervalo.fim])
+  const starts = new Set<number>([...gridStarts, ...dynamicStarts])
+
+  return Array.from(starts)
+    .filter((start) => isAppointmentWithinSchedule(day, start, durationMinutes))
+    .sort((a, b) => a - b)
+}
+
+export function reduceVisibleSlots(slots: { hora_inicio: string; hora_fim: string }[]) {
+  if (slots.length <= 1) {
+    return slots
+  }
+
+  const visibleStep = AGENDA_CONFIG.visibleSlotMinutes
+  const internalStep = AGENDA_CONFIG.slotMinutes
+  const groups: { hora_inicio: string; hora_fim: string }[][] = []
+
+  for (const slot of slots) {
+    const currentGroup = groups[groups.length - 1]
+
+    if (!currentGroup) {
+      groups.push([slot])
+      continue
+    }
+
+    const previousSlot = currentGroup[currentGroup.length - 1]
+    const diff = timeToMinutes(slot.hora_inicio) - timeToMinutes(previousSlot.hora_inicio)
+
+    if (diff === internalStep) {
+      currentGroup.push(slot)
+      continue
+    }
+
+    groups.push([slot])
+  }
+
+  return groups.flatMap((group) => {
+    const filtered = group.filter((slot) => timeToMinutes(slot.hora_inicio) % visibleStep === 0)
+    return filtered.length > 0 ? filtered : [group[0]]
+  })
 }
 
 function getCurrentDateParts(referenceDate: Date, timeZone: string) {

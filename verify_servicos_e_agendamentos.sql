@@ -12,10 +12,10 @@ FROM public.servicos
 WHERE ativo = true
   AND codigo NOT IN (
     'barba',
-    'cabelo_barba',
-    'combo_cabelo_barba_sobrancelha',
-    'corte_cabelo',
-    'corte_cabelo_sobrancelha'
+    'cabelo',
+    'corte_barba',
+    'combo_barba_corte_sobrancelha',
+    'acabamento_pezinho'
   );
 
 -- 3) Status validos nos agendamentos

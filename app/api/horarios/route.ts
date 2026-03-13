@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-import { AGENDA_CONFIG, filterPastSlotsForDate, generateSlots, minutesToTime, timeToMinutes } from '@/lib/agenda'
+import { AGENDA_CONFIG, filterPastSlotsForDate, generateCandidateStartTimes, minutesToTime, reduceVisibleSlots, timeToMinutes } from '@/lib/agenda'
 import { getBusyIntervals, overlaps } from '@/lib/agenda-conflicts'
+import { encontrarServicoAtivo } from '@/lib/servicos'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -20,20 +20,7 @@ export async function GET(req: Request) {
     )
   }
 
-  const servicoQuery = supabase
-    .from('servicos')
-    .select('id, codigo, nome, duracao_minutos, preco, ativo')
-    .eq('ativo', true)
-
-  const { data: servicos, error: servicoError } = await (servicoId
-    ? servicoQuery.eq('id', servicoId)
-    : servicoQuery.eq('codigo', servicoCodigo!))
-
-  if (servicoError) {
-    return NextResponse.json({ erro: servicoError.message }, { status: 500 })
-  }
-
-  const servico = servicos?.[0]
+  const servico = await encontrarServicoAtivo({ id: servicoId, codigo: servicoCodigo })
   if (!servico) {
     return NextResponse.json({ erro: 'Servico nao encontrado ou inativo' }, { status: 404 })
   }
@@ -60,34 +47,34 @@ export async function GET(req: Request) {
     )
   }
 
-  const slots = filterPastSlotsForDate(data, generateSlots(day))
+  if (busyState.bloqueioDiaInteiro || busyState.naoAceitarMais) {
+    return NextResponse.json({ data, horarios: [], servico })
+  }
+
+  const slots = filterPastSlotsForDate(
+    data,
+    generateCandidateStartTimes(day, duracao, busyState.intervalos).map((inicio) => ({
+      hora_inicio: minutesToTime(inicio),
+      hora_fim: minutesToTime(inicio + duracao),
+    }))
+  )
 
   if (slots.length === 0) {
     return NextResponse.json({ data, horarios: [], servico })
   }
 
-  if (busyState.bloqueioDiaInteiro || busyState.naoAceitarMais) {
-    return NextResponse.json({ data, horarios: [], servico })
-  }
-
-  const inicioAgenda = timeToMinutes(slots[0].hora_inicio)
-  const fimAgenda = timeToMinutes(slots[slots.length - 1].hora_fim)
-
-  const horariosDisponiveis = slots
-    .map((slot) => timeToMinutes(slot.hora_inicio))
-    .filter((inicio) => {
-      const fim = inicio + duracao
-
-      if (inicio < inicioAgenda || fim > fimAgenda) {
-        return false
-      }
-
-      return !busyState.intervalos.some((intervalo) => overlaps(inicio, fim, intervalo.inicio, intervalo.fim))
-    })
-    .map((inicio) => ({
-      hora_inicio: minutesToTime(inicio),
-      hora_fim: minutesToTime(inicio + duracao),
+  const horariosDisponiveis = reduceVisibleSlots(
+    slots
+    .map((slot) => ({
+      ...slot,
+      inicio: timeToMinutes(slot.hora_inicio),
+      fim: timeToMinutes(slot.hora_fim),
     }))
+    .filter((slot) => {
+      return !busyState.intervalos.some((intervalo) => overlaps(slot.inicio, slot.fim, intervalo.inicio, intervalo.fim))
+    })
+    .map(({ hora_inicio, hora_fim }) => ({ hora_inicio, hora_fim }))
+  )
 
   return NextResponse.json({
     data,
