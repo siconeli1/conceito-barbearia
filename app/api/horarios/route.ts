@@ -65,6 +65,18 @@ export async function GET(req: Request) {
 
   const horariosDisponiveis = reduceVisibleSlots(
     slots
+      .map((slot) => ({
+        ...slot,
+        inicio: timeToMinutes(slot.hora_inicio),
+        fim: timeToMinutes(slot.hora_fim),
+      }))
+      .filter((slot) => {
+        return !busyState.intervalos.some((intervalo) => overlaps(slot.inicio, slot.fim, intervalo.inicio, intervalo.fim))
+      })
+      .map(({ hora_inicio, hora_fim }) => ({ hora_inicio, hora_fim }))
+  )
+
+  const horariosCompletos = slots
     .map((slot) => ({
       ...slot,
       inicio: timeToMinutes(slot.hora_inicio),
@@ -74,11 +86,11 @@ export async function GET(req: Request) {
       return !busyState.intervalos.some((intervalo) => overlaps(slot.inicio, slot.fim, intervalo.inicio, intervalo.fim))
     })
     .map(({ hora_inicio, hora_fim }) => ({ hora_inicio, hora_fim }))
-  )
 
   return NextResponse.json({
     data,
     horarios: horariosDisponiveis,
+    horarios_completos: horariosCompletos,
     servico,
   })
 }

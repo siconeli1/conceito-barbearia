@@ -58,6 +58,14 @@ type DraftFinanceiro = {
   observacoes: string
 }
 
+const NAV_ITEMS: { id: View; label: string; shortLabel: string }[] = [
+  { id: "operacao", label: "Operacao", shortLabel: "Hoje" },
+  { id: "financeiro", label: "Financeiro", shortLabel: "Caixa" },
+  { id: "clientes", label: "Clientes", shortLabel: "Clientes" },
+  { id: "bloqueios", label: "Bloqueios", shortLabel: "Bloq." },
+  { id: "horarios", label: "Horarios", shortLabel: "Manual" },
+]
+
 function formatarDataBR(data: string) {
   const [ano, mes, dia] = data.split("-")
   return `${dia}/${mes}/${ano}`
@@ -117,6 +125,11 @@ function canConclude(item: Agendamento) {
 
 function canNoShow(item: Agendamento) {
   return item.origem !== "horario_customizado" && item.status_agendamento !== "cancelado" && item.status_agendamento !== "no_show" && item.status_atendimento !== "concluido"
+}
+
+function normalizePhoneLink(phone?: string | null) {
+  const digits = String(phone ?? "").replace(/\D/g, "")
+  return digits ? `https://wa.me/55${digits}` : null
 }
 
 export default function AdminPage() {
@@ -550,17 +563,23 @@ export default function AdminPage() {
     .slice()
     .sort((a, b) => `${a.data}T${a.hora_inicio}`.localeCompare(`${b.data}T${b.hora_inicio}`))
     .slice(0, 5)
+  const atendimentoAtual = operacaoAtiva.find((item) => {
+    const inicio = timeToMinutes(item.hora_inicio)
+    const fim = timeToMinutes(item.hora_fim)
+    return dataOperacao === today && minutosAtuais >= inicio && minutosAtuais < fim
+  })
+  const proximoHorario = proximosHorarios[0] ?? null
 
   return (
-    <main className="min-h-screen text-white p-5 sm:p-8">
-      <div className="max-w-7xl mx-auto">
-        <header className="mb-8 border border-[var(--line)] bg-black/30 backdrop-blur-sm rounded-[28px] p-6 sm:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.32em] text-[var(--accent-strong)] mb-3">Conceito Barbearia</p>
-              <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight">Centro de operacao do barbeiro</h1>
-              <p className="text-[var(--muted)] mt-3 max-w-2xl">
-                Agenda, financeiro, clientes e bloqueios em uma unica tela, com status operacionais e fechamento por periodo.
+    <main className="min-h-screen text-white px-4 py-4 sm:p-8">
+      <div className="max-w-7xl mx-auto pb-24 md:pb-8">
+        <header className="mb-6 border border-[var(--line)] bg-black/30 backdrop-blur-sm rounded-[28px] p-5 sm:p-8 sticky top-3 z-20">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.32em] text-[var(--accent-strong)] mb-2">Conceito Barbearia</p>
+              <h1 className="text-2xl sm:text-5xl font-semibold tracking-tight">Painel do barbeiro</h1>
+              <p className="text-sm sm:text-base text-[var(--muted)] mt-2 max-w-2xl">
+                Operacao do dia primeiro, com acesso rapido ao restante quando precisar.
               </p>
             </div>
             <button
@@ -568,21 +587,15 @@ export default function AdminPage() {
                 await fetch("/api/admin/logout", { method: "POST" })
                 window.location.href = "/admin/login"
               }}
-              className="px-4 py-2 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 h-fit"
+              className="px-4 py-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 h-fit text-sm"
             >
               Sair
             </button>
           </div>
         </header>
 
-        <nav className="flex gap-2 overflow-x-auto mb-6">
-          {([
-            { id: "operacao", label: "Operacao" },
-            { id: "financeiro", label: "Financeiro" },
-            { id: "clientes", label: "Clientes" },
-            { id: "bloqueios", label: "Bloqueios" },
-            { id: "horarios", label: "Horarios" },
-          ] as { id: View; label: string }[]).map((item) => (
+        <nav className="hidden md:flex gap-2 overflow-x-auto mb-6">
+          {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
               onClick={() => {
@@ -606,153 +619,152 @@ export default function AdminPage() {
 
         {view === "operacao" && (
           <section className="space-y-6">
-            <div className="grid xl:grid-cols-[1.15fr_0.85fr] gap-6">
-              <div className="rounded-[28px] border border-[var(--line)] bg-[rgba(18,18,18,0.92)] p-6">
-                <div className="flex flex-col sm:flex-row gap-4 sm:items-end sm:justify-between mb-6">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.28em] text-[var(--muted)] mb-2">Operacao do dia</p>
-                    <h2 className="text-2xl font-semibold">Linha do tempo da agenda</h2>
+            <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-6">
+              <div className="space-y-6">
+                <Panel title="Agora" subtitle={`Resumo rapido de ${formatarDataBR(dataOperacao)}`}>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <SpotlightCard
+                      label="Em atendimento"
+                      emptyLabel="Nenhum atendimento em andamento"
+                      item={atendimentoAtual ?? null}
+                    />
+                    <SpotlightCard
+                      label="Proximo cliente"
+                      emptyLabel="Sem proximos horarios"
+                      item={proximoHorario}
+                    />
                   </div>
-                  <div className="flex gap-3">
-                    <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input text-white px-4 py-2 rounded-xl border border-white/10" />
-                    <div className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-sm text-[var(--muted)]">
-                      {servicosDoDia.length} servico(s) no dia
-                    </div>
-                  </div>
-                </div>
+                </Panel>
 
-                {servicosDoDia.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {servicosDoDia.map((servico) => (
-                      <span key={servico} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200">
-                        {servico}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="grid md:grid-cols-5 gap-3 mb-6">
-                  <MetricCard titulo="Agendamentos" valor={String(metricasDia.agendados)} />
-                  <MetricCard titulo="Manuais" valor={String(metricasDia.personalizados)} />
-                  <MetricCard titulo="Previsto" valor={moeda(metricasDia.receitaPrevista)} accent />
-                  <MetricCard titulo="Realizado" valor={moeda(metricasDia.receitaRealizada)} success />
-                  <MetricCard titulo="Pendencias" valor={String(metricasDia.pendenciasPagamento)} />
-                </div>
-
-                <div className="space-y-6">
-                  {loadingOperacao && <p className="text-[var(--muted)]">Carregando...</p>}
-                  {!loadingOperacao && operacaoDoDia.length === 0 && <p className="text-[var(--muted)]">Nenhum item para {formatarDataBR(dataOperacao)}.</p>}
-
-                  {!loadingOperacao && operacaoAtiva.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Agenda ativa</h3>
-                        <span className="text-sm text-zinc-300">{operacaoAtiva.length} item(ns)</span>
+                <Panel title="Agenda do dia" subtitle="Linha do tempo mobile-first">
+                  <div className="space-y-4 mb-5">
+                    <input
+                      type="date"
+                      value={dataOperacao}
+                      onChange={(e) => setDataOperacao(e.target.value)}
+                      className="datetime-input text-white w-full px-4 py-3 rounded-2xl border border-white/10"
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                      <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
+                      <QuickFilterButton
+                        label="Amanha"
+                        onClick={() => {
+                          const base = new Date(`${today}T00:00:00`)
+                          base.setDate(base.getDate() + 1)
+                          setDataOperacao(base.toISOString().slice(0, 10))
+                        }}
+                      />
+                      <div className="px-3 py-3 rounded-2xl border border-white/10 bg-white/5 text-center text-xs text-[var(--muted)]">
+                        {servicosDoDia.length} servico(s)
                       </div>
-                      {operacaoAtiva.map((item) => {
-                        const draft = getDraft(item)
-                        return (
-                          <article key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-4">
-                            <div className="flex flex-col 2xl:flex-row gap-4 2xl:items-start 2xl:justify-between">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-3 mb-2">
-                                  <p className="text-lg font-semibold">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
-                                  <Badge label={badgeLabel(item)} />
-                                </div>
-                                <p className="text-white">{item.nome_cliente}</p>
-                                <p className="text-sm text-[var(--muted)]">{item.celular_cliente || "Sem telefone"}</p>
-                                <p className="text-sm mt-2 text-zinc-200">{item.servico_nome || "Servico nao informado"}</p>
-                                <div className="flex flex-wrap gap-4 text-sm mt-3">
-                                  <span className="text-[var(--accent-strong)]">Previsto: {moeda(Number(item.valor_final ?? item.servico_preco ?? 0))}</span>
-                                  {item.origem !== "horario_customizado" && (
-                                    <span className="text-[var(--muted)]">Status: {badgeLabel(item)}</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="grid md:grid-cols-[200px_1fr] gap-4 w-full 2xl:w-[52%]">
-                                <div className="flex flex-col gap-2">
-                                  {item.celular_cliente ? (
-                                    <a href={`https://wa.me/55${item.celular_cliente.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="rounded-xl bg-emerald-500/20 text-emerald-200 px-4 py-2 text-sm text-center hover:bg-emerald-500/30">
-                                      WhatsApp
-                                    </a>
-                                  ) : null}
-
-                                  {canConclude(item) && (
-                                    <QuickAction label="Concluir atendimento" onClick={() => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })} />
-                                  )}
-
-                                  {canNoShow(item) && (
-                                    <QuickAction label="Cliente faltou" onClick={() => atualizarAgendamento(item.id, { status_agendamento: "no_show" })} />
-                                  )}
-
-                                  {canCancel(item) && (
-                                    <QuickAction danger label={item.origem === "horario_customizado" ? "Remover horario" : "Cancelar"} onClick={() => item.origem === "horario_customizado" ? deletarHorario(item.id) : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })} />
-                                  )}
-                                </div>
-
-                                {item.origem !== "horario_customizado" && (
-                                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                                    <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)] mb-3">Ajuste financeiro rapido</p>
-                                    <div className="grid sm:grid-cols-3 gap-3 mb-3">
-                                      <InputMoney label="Desconto" value={draft.desconto} onChange={(value) => setDraft(item.id, { desconto: value })} />
-                                      <InputMoney label="Acrescimo" value={draft.acrescimo} onChange={(value) => setDraft(item.id, { acrescimo: value })} />
-                                      <InputMoney label="Valor final" value={draft.valor_final} onChange={(value) => setDraft(item.id, { valor_final: value })} />
-                                    </div>
-                                    <div className="grid sm:grid-cols-[220px_1fr] gap-3">
-                                      <select value={draft.forma_pagamento} onChange={(e) => setDraft(item.id, { forma_pagamento: e.target.value })} className="bg-black/30 border border-white/10 rounded-xl px-3 py-2">
-                                        <option value="">Forma de pagamento</option>
-                                        <option value="pix">Pix</option>
-                                        <option value="dinheiro">Dinheiro</option>
-                                        <option value="credito">Credito</option>
-                                        <option value="debito">Debito</option>
-                                      </select>
-                                      <input value={draft.observacoes} onChange={(e) => setDraft(item.id, { observacoes: e.target.value })} placeholder="Observacoes do atendimento" className="bg-black/30 border border-white/10 rounded-xl px-3 py-2" />
-                                    </div>
-                                    <div className="flex justify-between items-center mt-4">
-                                      <span className="text-sm text-[var(--muted)]">Valor congelado do atendimento</span>
-                                      <button onClick={() => salvarFinanceiro(item)} className="rounded-xl bg-[var(--accent)] text-black px-4 py-2 text-sm font-medium hover:opacity-90">
-                                        Salvar ajuste
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </article>
-                        )
-                      })}
                     </div>
-                  )}
-
-                  {!loadingOperacao && operacaoCancelada.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Cancelados</h3>
-                        <span className="text-sm text-zinc-300">{operacaoCancelada.length} item(ns)</span>
+                    {servicosDoDia.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {servicosDoDia.map((servico) => (
+                          <span key={servico} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200">
+                            {servico}
+                          </span>
+                        ))}
                       </div>
-                      {operacaoCancelada.map((item) => (
-                        <article key={item.id} className="rounded-2xl border border-red-500/10 bg-red-500/[0.04] p-4 opacity-85">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                    <MetricCard titulo="Agend." valor={String(metricasDia.agendados)} />
+                    <MetricCard titulo="Manuais" valor={String(metricasDia.personalizados)} />
+                    <MetricCard titulo="Previsto" valor={moeda(metricasDia.receitaPrevista)} accent />
+                    <MetricCard titulo="Realizado" valor={moeda(metricasDia.receitaRealizada)} success />
+                    <MetricCard titulo="Pend." valor={String(metricasDia.pendenciasPagamento)} />
+                  </div>
+
+                  <div className="space-y-4">
+                    {loadingOperacao && <p className="text-[var(--muted)]">Carregando...</p>}
+                    {!loadingOperacao && operacaoDoDia.length === 0 && <p className="text-[var(--muted)]">Nenhum item para {formatarDataBR(dataOperacao)}.</p>}
+
+                    {!loadingOperacao && operacaoAtiva.length > 0 && operacaoAtiva.map((item) => {
+                      const draft = getDraft(item)
+                      const whatsappHref = normalizePhoneLink(item.celular_cliente)
+                      return (
+                        <article key={item.id} className="rounded-[24px] border border-white/10 bg-black/25 p-4">
+                          <div className="flex items-start justify-between gap-3 mb-3">
                             <div>
-                              <div className="flex flex-wrap items-center gap-3 mb-2">
-                                <p className="text-lg font-semibold">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
-                                <Badge label={badgeLabel(item)} />
-                              </div>
-                              <p className="text-white">{item.nome_cliente}</p>
-                              <p className="text-sm text-[var(--muted)]">{item.servico_nome || "Servico nao informado"}</p>
+                              <p className="text-2xl font-semibold">{formatarHora(item.hora_inicio)}</p>
+                              <p className="text-sm text-[var(--muted)]">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
                             </div>
-                            {item.celular_cliente ? (
-                              <a href={`https://wa.me/55${item.celular_cliente.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-center hover:bg-white/10">
+                            <Badge label={badgeLabel(item)} />
+                          </div>
+
+                          <p className="text-lg text-white">{item.nome_cliente}</p>
+                          <p className="text-sm text-[var(--muted)] mt-1">{item.celular_cliente || "Sem telefone"}</p>
+                          <p className="text-sm mt-2 text-zinc-200">{item.servico_nome || "Servico nao informado"}</p>
+                          <div className="flex flex-wrap gap-3 text-sm mt-3">
+                            <span className="text-[var(--accent-strong)]">Previsto {moeda(Number(item.valor_final ?? item.servico_preco ?? 0))}</span>
+                            {item.origem !== "horario_customizado" && <span className="text-[var(--muted)]">Status {badgeLabel(item)}</span>}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 mt-4">
+                            {whatsappHref ? (
+                              <a href={whatsappHref} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 text-emerald-200 px-4 py-3 text-sm text-center hover:bg-emerald-500/30">
                                 WhatsApp
                               </a>
-                            ) : null}
+                            ) : <div />}
+                            {canConclude(item) && (
+                              <QuickAction label="Concluir" onClick={() => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })} />
+                            )}
+                            {canNoShow(item) && (
+                              <QuickAction label="No-show" onClick={() => atualizarAgendamento(item.id, { status_agendamento: "no_show" })} />
+                            )}
+                            {canCancel(item) && (
+                              <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => item.origem === "horario_customizado" ? deletarHorario(item.id) : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })} />
+                            )}
                           </div>
+
+                          {item.origem !== "horario_customizado" && (
+                            <CollapsibleCard title="Ajuste financeiro" subtitle="Abra so quando precisar">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                                <InputMoney label="Desconto" value={draft.desconto} onChange={(value) => setDraft(item.id, { desconto: value })} />
+                                <InputMoney label="Acrescimo" value={draft.acrescimo} onChange={(value) => setDraft(item.id, { acrescimo: value })} />
+                                <InputMoney label="Valor final" value={draft.valor_final} onChange={(value) => setDraft(item.id, { valor_final: value })} />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3">
+                                <select value={draft.forma_pagamento} onChange={(e) => setDraft(item.id, { forma_pagamento: e.target.value })} className="bg-black/30 border border-white/10 rounded-xl px-3 py-3">
+                                  <option value="">Forma de pagamento</option>
+                                  <option value="pix">Pix</option>
+                                  <option value="dinheiro">Dinheiro</option>
+                                  <option value="credito">Credito</option>
+                                  <option value="debito">Debito</option>
+                                </select>
+                                <input value={draft.observacoes} onChange={(e) => setDraft(item.id, { observacoes: e.target.value })} placeholder="Observacoes do atendimento" className="bg-black/30 border border-white/10 rounded-xl px-3 py-3" />
+                              </div>
+                              <button onClick={() => salvarFinanceiro(item)} className="mt-4 w-full rounded-2xl bg-[var(--accent)] text-black px-4 py-3 text-sm font-medium hover:opacity-90">
+                                Salvar ajuste
+                              </button>
+                            </CollapsibleCard>
+                          )}
                         </article>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      )
+                    })}
+
+                    {!loadingOperacao && operacaoCancelada.length > 0 && (
+                      <CollapsibleCard title={`Cancelados (${operacaoCancelada.length})`} subtitle="Toque para expandir">
+                        <div className="space-y-3">
+                          {operacaoCancelada.map((item) => (
+                            <article key={item.id} className="rounded-2xl border border-red-500/10 bg-red-500/[0.04] p-4 opacity-85">
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-lg font-semibold">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
+                                  <p className="text-white">{item.nome_cliente}</p>
+                                  <p className="text-sm text-[var(--muted)]">{item.servico_nome || "Servico nao informado"}</p>
+                                </div>
+                                <Badge label={badgeLabel(item)} />
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </CollapsibleCard>
+                    )}
+                  </div>
+                </Panel>
               </div>
 
               <div className="space-y-6">
@@ -761,7 +773,7 @@ export default function AdminPage() {
                     <InfoRow label="Receita prevista" value={moeda(metricasDia.receitaPrevista)} accent />
                     <InfoRow label="Receita realizada" value={moeda(metricasDia.receitaRealizada)} success />
                     <InfoRow label="Ticket medio" value={moeda(metricasDia.ticketMedio)} />
-                    <InfoRow label="Pendencias de pagamento" value={String(metricasDia.pendenciasPagamento)} />
+                    <InfoRow label="Pendencias" value={String(metricasDia.pendenciasPagamento)} />
                   </div>
                 </Panel>
 
@@ -786,9 +798,13 @@ export default function AdminPage() {
         {view === "financeiro" && (
           <section className="space-y-6">
             <Panel title="Fechamento por periodo" subtitle="Receita prevista, realizada e distribuicao operacional">
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
+              <div className="flex flex-col md:flex-row gap-3 mb-3">
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+              </div>
+              <div className="grid grid-cols-2 sm:flex gap-2 mb-6">
+                <QuickFilterButton label="Hoje" onClick={() => { setDateFrom(today); setDateTo(today) }} active={dateFrom === today && dateTo === today} />
+                <QuickFilterButton label="7 dias" onClick={() => { setDateFrom(new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)); setDateTo(today) }} />
               </div>
 
               <div className="grid md:grid-cols-6 gap-3 mb-6">
@@ -841,9 +857,13 @@ export default function AdminPage() {
         {view === "clientes" && (
           <section className="space-y-6">
             <Panel title="Base de clientes" subtitle="Recorrencia, receita e cancelamentos no periodo selecionado">
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
+              <div className="flex flex-col md:flex-row gap-3 mb-3">
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+              </div>
+              <div className="grid grid-cols-2 sm:flex gap-2 mb-6">
+                <QuickFilterButton label="Hoje" onClick={() => { setDateFrom(today); setDateTo(today) }} active={dateFrom === today && dateTo === today} />
+                <QuickFilterButton label="7 dias" onClick={() => { setDateFrom(new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)); setDateTo(today) }} />
               </div>
 
               <div className="grid gap-3">
@@ -949,6 +969,28 @@ export default function AdminPage() {
             </Panel>
           </section>
         )}
+
+        <nav className="md:hidden fixed bottom-3 left-3 right-3 z-30 rounded-[26px] border border-white/10 bg-[rgba(10,10,10,0.96)] backdrop-blur-xl p-2">
+          <div className="grid grid-cols-5 gap-2">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setView(item.id)
+                  setErro(null)
+                  setMensagem(null)
+                }}
+                className={`rounded-2xl px-2 py-3 text-[11px] transition ${
+                  view === item.id
+                    ? "bg-[var(--accent)] text-black font-semibold"
+                    : "bg-white/5 text-white/85"
+                }`}
+              >
+                {item.shortLabel}
+              </button>
+            ))}
+          </div>
+        </nav>
       </div>
     </main>
   )
@@ -956,9 +998,9 @@ export default function AdminPage() {
 
 function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-[28px] border border-[var(--line)] bg-[rgba(18,18,18,0.92)] p-6">
+    <section className="rounded-[28px] border border-[var(--line)] bg-[rgba(18,18,18,0.92)] p-4 sm:p-6">
       <p className="text-xs uppercase tracking-[0.28em] text-[var(--muted)] mb-2">{subtitle}</p>
-      <h2 className="text-2xl font-semibold mb-6">{title}</h2>
+      <h2 className="text-xl sm:text-2xl font-semibold mb-5 sm:mb-6">{title}</h2>
       {children}
     </section>
   )
@@ -975,7 +1017,7 @@ function MetricCard({ titulo, valor, accent, success }: { titulo: string; valor:
 
 function QuickAction({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
   return (
-    <button onClick={onClick} className={`rounded-xl px-4 py-2 text-sm text-left transition ${danger ? "border border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20" : "border border-white/10 bg-white/5 hover:bg-white/10"}`}>
+    <button onClick={onClick} className={`rounded-2xl px-4 py-3 text-sm text-center transition min-h-12 ${danger ? "border border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20" : "border border-white/10 bg-white/5 hover:bg-white/10"}`}>
       {label}
     </button>
   )
@@ -1004,5 +1046,73 @@ function InputMoney({ label, value, onChange }: { label: string; value: string; 
       <span className="block text-[var(--muted)] mb-1">{label}</span>
       <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="decimal" className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2" />
     </label>
+  )
+}
+
+function QuickFilterButton({ label, onClick, active }: { label: string; onClick: () => void; active?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-2xl px-3 py-3 text-sm transition ${active ? "bg-[var(--accent)] text-black font-semibold" : "border border-white/10 bg-white/5 text-white/85 hover:bg-white/10"}`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function SpotlightCard({
+  label,
+  emptyLabel,
+  item,
+}: {
+  label: string
+  emptyLabel: string
+  item: Agendamento | null
+}) {
+  const whatsappHref = normalizePhoneLink(item?.celular_cliente)
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)] mb-3">{label}</p>
+      {!item && <p className="text-white/80">{emptyLabel}</p>}
+      {item && (
+        <>
+          <p className="text-2xl font-semibold">{formatarHora(item.hora_inicio)}</p>
+          <p className="text-white mt-2">{item.nome_cliente}</p>
+          <p className="text-sm text-[var(--muted)]">{item.servico_nome || "Servico nao informado"}</p>
+          {whatsappHref && (
+            <a href={whatsappHref} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm text-emerald-200 hover:bg-emerald-500/30">
+              Abrir WhatsApp
+            </a>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function CollapsibleCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  children: React.ReactNode
+}) {
+  return (
+    <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <summary className="cursor-pointer list-none">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-white">{title}</p>
+            {subtitle && <p className="text-xs text-[var(--muted)] mt-1">{subtitle}</p>}
+          </div>
+          <span className="text-xs text-[var(--muted)]">Abrir</span>
+        </div>
+      </summary>
+      <div className="mt-4">{children}</div>
+    </details>
   )
 }

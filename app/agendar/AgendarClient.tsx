@@ -13,6 +13,7 @@ interface ServicosResponse {
 
 interface HorariosResponse {
   horarios?: Slot[]
+  horarios_completos?: Slot[]
   servico?: Servico
   erro?: string
 }
@@ -92,6 +93,8 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
   const servicoSelecionado = servicos.find((servico) => servico.id === servicoSelecionadoId) ?? null
 
   const [slots, setSlots] = useState<Slot[]>([])
+  const [allSlots, setAllSlots] = useState<Slot[]>([])
+  const [showAllSlots, setShowAllSlots] = useState(false)
   const [loading, setLoading] = useState(false)
   const [carregandoHorarios, setCarregandoHorarios] = useState(false)
 
@@ -151,6 +154,8 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
     setCarregandoHorarios(true)
     dispatch({ type: "setErro", value: "" })
     setSlots([])
+    setAllSlots([])
+    setShowAllSlots(false)
     dispatch({ type: "setHorario", value: null })
 
     try {
@@ -163,6 +168,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
       }
 
       setSlots(json.horarios ?? [])
+      setAllSlots(json.horarios_completos ?? json.horarios ?? [])
     } catch {
       dispatch({ type: "setErro", value: "Erro ao carregar horários" })
     } finally {
@@ -175,6 +181,8 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
       buscarHorarios(debouncedData, servicoSelecionadoId)
     } else if (debouncedData) {
       setSlots([])
+      setAllSlots([])
+      setShowAllSlots(false)
       dispatch({ type: "setHorario", value: null })
     }
   }, [debouncedData, servicoSelecionadoId, pastDate, outOfRange, isClosedDay, buscarHorarios])
@@ -182,6 +190,8 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
   useEffect(() => {
     dispatch({ type: "setHorario", value: null })
     setSlots([])
+    setAllSlots([])
+    setShowAllSlots(false)
   }, [servicoSelecionadoId])
 
   useEffect(() => {
@@ -255,6 +265,9 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
       currency: "BRL",
     })
   }
+
+  const displayedSlots = showAllSlots ? allSlots : slots
+  const hasExtraSlots = allSlots.length > slots.length
 
   if (agendamentoConfirmado) {
     return (
@@ -493,15 +506,28 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
           <div>
             <label className="block text-sm font-semibold text-white mb-4">Horário</label>
             {servicoSelecionado && !carregandoHorarios && (
-              <p className="text-sm text-gray-400 mb-4">Mostrando os principais horários disponíveis para facilitar sua escolha.</p>
+              <p className="text-sm text-gray-400 mb-4">
+                {showAllSlots
+                  ? "Mostrando todos os horários válidos para este serviço."
+                  : "Mostrando os principais horários disponíveis."}
+              </p>
             )}
             {!servicoSelecionado && <p className="text-gray-400">Escolha um serviço para ver horários</p>}
             {carregandoHorarios && servicoSelecionado && <p className="text-gray-400">Carregando horários...</p>}
             {!carregandoHorarios && slots.length === 0 && data && !pastDate && !outOfRange && servicoSelecionado && (
               <p className="text-gray-400">Nenhum horário disponível para esta data</p>
             )}
+            {!carregandoHorarios && hasExtraSlots && (
+              <button
+                type="button"
+                onClick={() => setShowAllSlots((current) => !current)}
+                className="mb-4 text-sm text-white/80 underline underline-offset-4 hover:text-white transition-colors"
+              >
+                {showAllSlots ? "Mostrar menos horários" : "Ver mais horários"}
+              </button>
+            )}
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-2">
-              {slots.map((slot) => (
+              {displayedSlots.map((slot) => (
                 <button
                   key={slot.hora_inicio}
                   onClick={() => dispatch({ type: "setHorario", value: slot.hora_inicio })}
