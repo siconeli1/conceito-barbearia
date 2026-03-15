@@ -1,63 +1,269 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Conceito Barbearia
 
-## Getting Started
+<p align="center">
+  <img src="/public/logo.png" alt="Conceito Barbearia Logo" width="180"/>
+</p>
 
-First, run the development server:
+<p align="center">
+  Sistema moderno de agendamento online para barbearias.
+</p>
 
-```bash
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-15-black"/>
+  <img src="https://img.shields.io/badge/TypeScript-5-blue"/>
+  <img src="https://img.shields.io/badge/Supabase-PostgreSQL-green"/>
+  <img src="https://img.shields.io/badge/Vercel-Deploy-black"/>
+</p>
+
+---
+
+# 📖 Sobre o Projeto
+
+O **Conceito Barbearia** é um sistema web de agendamento online desenvolvido para simplificar a gestão de horários em barbearias.
+
+O sistema permite que clientes realizem agendamentos de forma rápida e intuitiva, enquanto o administrador possui controle total sobre horários, serviços e disponibilidade da agenda.
+
+O projeto foi desenvolvido com foco em:
+
+- experiência do usuário
+- organização da agenda
+- escalabilidade do sistema
+- facilidade de manutenção
+
+---
+
+# ✂️ Funcionalidades
+
+## Agendamento Online
+
+- escolha de serviço
+- seleção de data
+- visualização de horários disponíveis
+- reserva rápida de horário
+
+## Agenda Inteligente
+
+- cálculo dinâmico de horários
+- encaixe automático de atendimentos
+- duração variável por serviço
+- prevenção de conflitos de agenda
+
+## Gestão de Serviços
+
+- cadastro de serviços
+- definição de duração
+- definição de preço
+- atualização dinâmica
+
+## Bloqueio de Horários
+
+- bloqueio manual de horários
+- bloqueios personalizados
+- pausas automáticas (almoço)
+
+## Painel Administrativo
+
+- visualização de agendamentos
+- gestão de horários
+- controle da agenda
+
+---
+
+# 🧠 Lógica da Agenda
+
+O sistema não utiliza intervalos fixos de atendimento.
+
+Cada serviço possui sua própria duração.
+
+Exemplo:
+
+| Serviço | Duração |
+|------|------|
+| Corte | 40 min |
+| Barba | 30 min |
+| Corte + Barba | 60 min |
+| Acabamento | 10 min |
+
+A agenda calcula automaticamente:
+hora_inicio + duração_serviço = hora_fim
+
+O sistema também impede sobreposição de horários.
+
+---
+
+# ⏰ Horário de Funcionamento
+
+Segunda a Sexta
+08:30 - 12:00
+14:00 - 19:00
+
+
+Regras:
+
+- pausa automática no almoço
+- último horário permitido para início: **19:00**
+- horários calculados dinamicamente
+
+---
+
+# 🏗 Arquitetura do Sistema
+
+Estrutura principal do projeto:
+/app
+/components
+/lib
+/db
+/public
+
+package.json
+tsconfig.json
+next.config.ts
+
+
+Descrição das pastas:
+
+### /app
+Rotas e páginas do Next.js.
+
+### /components
+Componentes reutilizáveis da interface.
+
+### /lib
+Funções auxiliares e lógica de negócio.
+
+Exemplos:
+
+- cálculo de horários
+- verificação de conflitos
+- integração com Supabase
+
+### /db/migrations
+Scripts SQL utilizados para evolução do banco de dados.
+
+---
+
+# 🗄 Banco de Dados
+
+O banco de dados é gerenciado pelo **Supabase (PostgreSQL)**.
+
+Principais tabelas:
+
+### agendamentos
+
+Armazena os agendamentos realizados.
+
+Campos principais:
+
+- data
+- hora_inicio
+- hora_fim
+- nome_cliente
+- celular_cliente
+- servico_nome
+- servico_duracao_minutos
+- servico_preco
+- status_agendamento
+
+### horarios_customizados
+
+Permite criar horários específicos para datas.
+
+### bloqueios
+
+Permite bloquear horários manualmente.
+
+---
+
+# 🚀 Tecnologias Utilizadas
+
+- **Next.js**
+- **React**
+- **TypeScript**
+- **Supabase**
+- **PostgreSQL**
+- **TailwindCSS**
+- **Vercel**
+
+---
+
+# 💻 Como Rodar o Projeto
+
+## 1️⃣ Clonar o repositório
+git clone https://github.com/siconei1/conceito-barbearia.git
+
+---
+
+## 2️⃣ Instalar dependências
+npm install
+
+---
+
+## 3️⃣ Criar arquivo de ambiente
+
+Crie um arquivo:
+.env.local
+
+Exemplo:
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+---
+
+## 4️⃣ Rodar o projeto
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+O projeto está disponível em:
+http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# 🌐 Deploy
 
-## Learn More
+O deploy é realizado utilizando **Vercel**.
 
-To learn more about Next.js, take a look at the following resources:
+Cada commit na branch principal gera automaticamente um novo deploy.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# 📈 Melhorias Futuras
 
-## Deploy on Vercel
+Possíveis evoluções do projeto:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- confirmação de agendamento via WhatsApp
+- lembrete automático de horários
+- sistema de autenticação para clientes
+- dashboard analítico
+- sistema multi-barbearia (SaaS)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
 
-## Admin Access
+# 🤝 Contribuição
 
-The admin panel is protected by a simple password authentication.
+Contribuições são bem-vindas.
 
-### Setup
+Para contribuir:
 
-1. Copy `.env.example` to `.env.local` (if not already done).
-2. Set your desired admin password in `.env.local`:
-   ```
-   ADMIN_PASSWORD=your_secure_password_here
-   ```
-3. Restart the development server.
+1. Faça um fork do projeto
+2. Crie uma branch
+3. Faça suas alterações
+4. Abra um Pull Request
 
-### Usage
+---
 
-- Access `/admin` in your browser.
-- You'll be redirected to `/admin/login` if not authenticated.
-- Enter the password to log in.
-- Use the "Sair" (Logout) button to log out.
+# 📄 Licença
 
-### Security Notes
+Este projeto está sob a licença MIT.
 
-- The password is stored in environment variables.
-- Authentication uses HTTP-only cookies.
-- In production, ensure HTTPS is enabled for secure cookie transmission.
-- Change the default password before deploying!
+---
+
+# 👨‍💻 Autor
+
+**Lucas Siconeli**
+
+Desenvolvedor do sistema **Conceito Barbearia**.
+
+---
+
+
+
