@@ -1,63 +1,301 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sistema de Agendamento — Conceito Barbearia
 
-## Getting Started
+<p align="center">
+  <img src="/public/logo.png" alt="Conceito Barbearia Logo" width="250"/>
+</p>
 
-First, run the development server:
+<p align="center">
+  Sistema de agendamento online desenvolvido especificamente para a barbearia <strong>Conceito Barbearia</strong>.
+</p>
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-15-black"/>
+  <img src="https://img.shields.io/badge/TypeScript-5-blue"/>
+  <img src="https://img.shields.io/badge/Supabase-PostgreSQL-green"/>
+  <img src="https://img.shields.io/badge/Vercel-Deploy-black"/>
+</p>
+
+---
+
+# 📖 Sobre o Projeto
+
+Este projeto é um **sistema de agendamento online desenvolvido exclusivamente para a barbearia Conceito Barbearia**.
+
+O objetivo do sistema é permitir que clientes realizem agendamentos de forma simples, rápida e intuitiva, enquanto a barbearia possui controle completo sobre a agenda de atendimentos.
+
+O sistema foi desenvolvido com foco em:
+
+- simplicidade de uso
+- organização da agenda
+- prevenção de conflitos de horário
+- controle administrativo dos agendamentos
+
+---
+
+# ✂️ Funcionalidades
+
+## Agendamento Online
+
+Clientes podem:
+
+- escolher o serviço desejado
+- selecionar a data
+- visualizar horários disponíveis
+- realizar o agendamento rapidamente
+
+---
+
+## Agenda Inteligente
+
+O sistema possui uma lógica de agenda dinâmica que permite:
+
+- encaixe automático de horários
+- serviços com duração variável
+- prevenção automática de sobreposição de atendimentos
+- cálculo automático do horário final
+
+---
+
+## Gestão de Serviços
+
+A barbearia pode configurar:
+
+- serviços disponíveis
+- duração de cada serviço
+- valor de cada serviço
+
+---
+
+## Controle da Agenda
+
+O sistema permite:
+
+- bloqueio manual de horários
+- criação de pausas na agenda
+- controle completo da disponibilidade
+
+---
+
+# 🧠 Lógica da Agenda
+
+Diferente de sistemas que usam intervalos fixos (ex: 30 minutos), este sistema utiliza **duração real por serviço**.
+
+Exemplo:
+
+| Serviço | Duração |
+|------|------|
+| Corte | 40 min |
+| Barba | 30 min |
+| Corte + Barba | 60 min |
+| Acabamento | 10 min |
+
+O sistema calcula automaticamente:
+
+```
+hora_inicio + duração_do_serviço = hora_fim
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Além disso, o sistema impede automaticamente **conflitos de horário entre atendimentos**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# ⏰ Horário de Funcionamento
 
-## Learn More
+Segunda a Sexta
 
-To learn more about Next.js, take a look at the following resources:
+```
+08:30 - 12:00
+14:00 - 19:00
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Regras aplicadas:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- pausa automática no almoço
+- último horário permitido para início: **19:00**
+- horários gerados dinamicamente
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# 🏗 Arquitetura do Projeto
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Estrutura principal do projeto:
 
-## Admin Access
+```
+/app
+/components
+/lib
+/db
+   /migrations
+/scripts
+/public
 
-The admin panel is protected by a simple password authentication.
+package.json
+tsconfig.json
+next.config.ts
+```
 
-### Setup
+### /app
 
-1. Copy `.env.example` to `.env.local` (if not already done).
-2. Set your desired admin password in `.env.local`:
-   ```
-   ADMIN_PASSWORD=your_secure_password_here
-   ```
-3. Restart the development server.
+Contém as rotas e páginas do Next.js.
 
-### Usage
+---
 
-- Access `/admin` in your browser.
-- You'll be redirected to `/admin/login` if not authenticated.
-- Enter the password to log in.
-- Use the "Sair" (Logout) button to log out.
+### /components
 
-### Security Notes
+Componentes reutilizáveis da interface.
 
-- The password is stored in environment variables.
-- Authentication uses HTTP-only cookies.
-- In production, ensure HTTPS is enabled for secure cookie transmission.
-- Change the default password before deploying!
+---
+
+### /lib
+
+Funções auxiliares e lógica de negócio.
+
+Exemplos:
+
+- cálculo de horários
+- verificação de conflitos de agenda
+- integração com Supabase
+
+---
+
+### /db/migrations
+
+Scripts SQL utilizados para evolução da estrutura do banco de dados.
+
+---
+
+### /scripts
+
+Scripts SQL auxiliares utilizados para manutenção e verificação do banco.
+
+---
+
+# 🗄 Banco de Dados
+
+O banco de dados é gerenciado utilizando **Supabase (PostgreSQL)**.
+
+Principais tabelas do sistema:
+
+### agendamentos
+
+Armazena todos os agendamentos realizados.
+
+Campos principais:
+
+- data
+- hora_inicio
+- hora_fim
+- nome_cliente
+- celular_cliente
+- servico_nome
+- servico_duracao_minutos
+- servico_preco
+- status_agendamento
+
+---
+
+### horarios_customizados
+
+Permite criar horários específicos para datas específicas.
+
+---
+
+### bloqueios
+
+Permite bloquear horários manualmente na agenda.
+
+---
+
+# 🚀 Tecnologias Utilizadas
+
+Este projeto foi desenvolvido utilizando:
+
+- **Next.js**
+- **React**
+- **TypeScript**
+- **Supabase**
+- **PostgreSQL**
+- **TailwindCSS**
+- **Vercel**
+
+---
+
+# 💻 Como Rodar o Projeto
+
+## 1️⃣ Clonar o repositório
+
+```
+git clone https://github.com/seu-usuario/conceito-barbearia.git
+```
+
+---
+
+## 2️⃣ Instalar dependências
+
+```
+npm install
+```
+
+ou
+
+```
+yarn install
+```
+
+---
+
+## 3️⃣ Criar arquivo de ambiente
+
+Crie um arquivo:
+
+```
+.env.local
+```
+
+Exemplo:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+---
+
+## 4️⃣ Rodar o projeto
+
+```
+npm run dev
+```
+
+O sistema ficará disponível em:
+
+```
+http://localhost:3000
+```
+
+---
+
+# 🌐 Deploy
+
+O deploy do projeto é realizado utilizando **Vercel**.
+
+Cada commit enviado para o repositório gera automaticamente um novo deploy.
+
+---
+
+# 📄 Licença
+
+Este projeto foi desenvolvido para uso específico da **Conceito Barbearia**.
+
+---
+
+# 👨‍💻 Desenvolvedor
+
+**Lucas Siconeli**
+
+Desenvolvedor responsável pelo sistema de agendamento da **Conceito Barbearia**.
+
+---
+
+
