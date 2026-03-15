@@ -298,12 +298,4 @@ Desenvolvedor responsável pelo sistema de agendamento da **Conceito Barbearia**
 
 ---
 
-## Observação
 
-Para exibir o logo corretamente no README, adicione o arquivo:
-
-```
-/public/logo.png
-```
-
-ou substitua o caminho da imagem no início do documento.
