@@ -8,6 +8,7 @@ type StatusAtendimento = "pendente" | "em_atendimento" | "concluido"
 type StatusPagamento = "pendente" | "pago" | "estornado"
 type View = "operacao" | "agenda" | "clientes" | "financeiro" | "mais"
 type AgendaMode = "dia" | "semana"
+type MobileSection = "cronograma" | "financeiro" | "bloqueios" | "horarios" | "clientes"
 
 type Agendamento = {
   id: string
@@ -104,6 +105,28 @@ function formatWeekday(dateIso: string) {
   }).format(new Date(`${dateIso}T12:00:00`))
 }
 
+function buildTimeSlots() {
+  const ranges = [
+    { start: "08:30", end: "12:00" },
+    { start: "14:00", end: "20:00" },
+  ]
+
+  const slots: string[] = []
+
+  for (const range of ranges) {
+    let current = timeToMinutes(range.start)
+    const end = timeToMinutes(range.end)
+    while (current < end) {
+      const hour = String(Math.floor(current / 60)).padStart(2, "0")
+      const minute = String(current % 60).padStart(2, "0")
+      slots.push(`${hour}:${minute}`)
+      current += 30
+    }
+  }
+
+  return slots
+}
+
 function getCurrentMinutesInSaoPaulo(referenceDate = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
@@ -184,6 +207,9 @@ export default function AdminPage() {
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, DraftFinanceiro>>({})
   const [buscaCliente, setBuscaCliente] = useState("")
+  const [mobileSection, setMobileSection] = useState<MobileSection>("cronograma")
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileExpandedId, setMobileExpandedId] = useState<string | null>(null)
 
   const operacaoRequestRef = useRef(0)
   const semanaRequestRef = useRef(0)
@@ -345,6 +371,10 @@ export default function AdminPage() {
     const timer = setTimeout(() => setMensagem(null), 4000)
     return () => clearTimeout(timer)
   }, [mensagem])
+
+  useEffect(() => {
+    setMobileExpandedId(null)
+  }, [mobileSection, agendaMode, dataOperacao, semanaBase])
 
   const metricasDia = useMemo(() => {
     const reais = agendamentosDia.filter((item) => item.origem !== "horario_customizado")
@@ -515,6 +545,7 @@ export default function AdminPage() {
     }),
     { atendimentos: 0, personalizados: 0, receita: 0 }
   )
+  const mobileTimeSlots = useMemo(() => buildTimeSlots(), [])
 
   function getDraft(item: Agendamento): DraftFinanceiro {
     return drafts[item.id] || {
@@ -682,7 +713,7 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen px-4 py-4 text-white sm:p-8">
       <div className="mx-auto max-w-7xl pb-24 md:pb-8">
-        <header className="sticky top-3 z-20 mb-6 rounded-[28px] border border-[var(--line)] bg-black/30 p-5 backdrop-blur-sm sm:p-8">
+        <header className="mb-6 hidden rounded-[28px] border border-[var(--line)] bg-black/30 p-5 backdrop-blur-sm sm:p-8 md:block">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="mb-2 text-[10px] uppercase tracking-[0.32em] text-[var(--accent-strong)]">Conceito Barbearia</p>
@@ -724,6 +755,135 @@ export default function AdminPage() {
         {erro && <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-red-200">{erro}</div>}
         {mensagem && <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-200">{mensagem}</div>}
 
+        <section className="md:hidden">
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-[24px] border border-[var(--line)] bg-[rgba(18,18,18,0.92)] px-4 py-4">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.28em] text-[var(--accent-strong)]">Admin mobile</p>
+              <h2 className="mt-2 text-xl font-semibold">
+                {mobileSection === "cronograma"
+                  ? agendaMode === "dia"
+                    ? `Dia ${formatarDataBR(dataOperacao)}`
+                    : `Semana ${formatarDataBR(semanaBase)}`
+                  : mobileSection === "financeiro"
+                    ? "Financeiro"
+                    : mobileSection === "bloqueios"
+                      ? "Bloqueios"
+                      : mobileSection === "horarios"
+                        ? "Marcar horarios"
+                        : "Clientes"}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              {mobileSection !== "cronograma" && (
+                <button
+                  type="button"
+                  onClick={() => setMobileSection("cronograma")}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm"
+                >
+                  Agenda
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm"
+              >
+                Menu
+              </button>
+            </div>
+          </div>
+
+          {mobileSection === "cronograma" && (
+            <MobileScheduleSection
+              agendaMode={agendaMode}
+              setAgendaMode={setAgendaMode}
+              dataOperacao={dataOperacao}
+              setDataOperacao={setDataOperacao}
+              today={today}
+              semanaBase={semanaBase}
+              setSemanaBase={setSemanaBase}
+              slots={mobileTimeSlots}
+              operacaoDoDia={agendamentosDia}
+              resumoSemana={resumoSemana}
+              expandedId={mobileExpandedId}
+              setExpandedId={setMobileExpandedId}
+              loadingOperacao={loadingOperacao}
+              loadingSemana={loadingSemana}
+              onCancelar={(item) =>
+                item.origem === "horario_customizado"
+                  ? deletarHorario(item.id)
+                  : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })
+              }
+              onConcluir={(item) => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })}
+              onNoShow={(item) => atualizarAgendamento(item.id, { status_agendamento: "no_show" })}
+            />
+          )}
+
+          {mobileSection === "financeiro" && (
+            <FinanceSection
+              today={today}
+              financeDateFrom={financeDateFrom}
+              financeDateTo={financeDateTo}
+              setFinanceDateFrom={setFinanceDateFrom}
+              setFinanceDateTo={setFinanceDateTo}
+              loadingFinanceiro={loadingFinanceiro}
+              metricasFinanceiras={metricasFinanceiras}
+            />
+          )}
+
+          {mobileSection === "clientes" && (
+            <Panel title="Clientes" subtitle="Todos os clientes cadastrados">
+              <div className="mb-3 grid gap-3">
+                <input value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} placeholder="Buscar por nome ou celular" className="rounded-xl border border-white/10 bg-black/20 px-4 py-3" />
+                <div className="grid grid-cols-3 gap-2">
+                  <QuickFilterButton label="Hoje" onClick={() => { setClientesDateFrom(today); setClientesDateTo(today) }} active={clientesDateFrom === today && clientesDateTo === today} />
+                  <QuickFilterButton label="7 dias" onClick={() => { setClientesDateFrom(addDays(today, -6)); setClientesDateTo(today) }} />
+                  <QuickFilterButton label="30 dias" onClick={() => { setClientesDateFrom(addDays(today, -29)); setClientesDateTo(today) }} />
+                </div>
+              </div>
+              <div className="space-y-3">
+                {loadingClientes && <p className="text-[var(--muted)]">Carregando clientes...</p>}
+                {!loadingClientes && clientesFiltrados.map((cliente) => <ClienteCard key={`${cliente.celular}-${cliente.ultData}`} cliente={cliente} />)}
+              </div>
+            </Panel>
+          )}
+
+          {mobileSection === "bloqueios" && (
+            <BloqueiosPanel
+              dataBloqueio={dataBloqueio}
+              setDataBloqueio={setDataBloqueio}
+              tipoNovoBloqueio={tipoNovoBloqueio}
+              setTipoNovoBloqueio={setTipoNovoBloqueio}
+              criarBloqueio={criarBloqueio}
+              bloqueios={bloqueios}
+              todosBloqueios={todosBloqueios}
+              deletarBloqueio={deletarBloqueio}
+            />
+          )}
+
+          {mobileSection === "horarios" && (
+            <HorariosPanel
+              dataHorarios={dataHorarios}
+              setDataHorarios={setDataHorarios}
+              criarHorario={criarHorario}
+              horarios={horarios}
+              deletarHorario={deletarHorario}
+            />
+          )}
+
+          {mobileMenuOpen && (
+            <MobileMenuSheet
+              current={mobileSection}
+              onClose={() => setMobileMenuOpen(false)}
+              onSelect={(section) => {
+                setMobileSection(section)
+                setMobileMenuOpen(false)
+              }}
+            />
+          )}
+        </section>
+
+        <div className="hidden md:block">
         {view === "operacao" && (
           <section className="space-y-6">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -889,8 +1049,9 @@ export default function AdminPage() {
         {view === "financeiro" && <FinanceSection today={today} financeDateFrom={financeDateFrom} financeDateTo={financeDateTo} setFinanceDateFrom={setFinanceDateFrom} setFinanceDateTo={setFinanceDateTo} loadingFinanceiro={loadingFinanceiro} metricasFinanceiras={metricasFinanceiras} />}
 
         {view === "mais" && <MaisSection today={today} dataBloqueio={dataBloqueio} setDataBloqueio={setDataBloqueio} tipoNovoBloqueio={tipoNovoBloqueio} setTipoNovoBloqueio={setTipoNovoBloqueio} criarBloqueio={criarBloqueio} bloqueios={bloqueios} todosBloqueios={todosBloqueios} deletarBloqueio={deletarBloqueio} dataHorarios={dataHorarios} setDataHorarios={setDataHorarios} criarHorario={criarHorario} horarios={horarios} deletarHorario={deletarHorario} />}
+        </div>
 
-        <nav className="fixed bottom-3 left-3 right-3 z-30 rounded-[26px] border border-white/10 bg-[rgba(10,10,10,0.96)] p-2 backdrop-blur-xl md:hidden">
+        <nav className="hidden fixed bottom-3 left-3 right-3 z-30 rounded-[26px] border border-white/10 bg-[rgba(10,10,10,0.96)] p-2 backdrop-blur-xl md:hidden">
           <div className="grid grid-cols-5 gap-2">
             {NAV_ITEMS.map((item) => (
               <button
@@ -1255,6 +1416,317 @@ function FinanceSection({
             ))}
           </div>
         </div>
+      </div>
+    </Panel>
+  )
+}
+
+function MobileMenuSheet({
+  current,
+  onClose,
+  onSelect,
+}: {
+  current: MobileSection
+  onClose: () => void
+  onSelect: (section: MobileSection) => void
+}) {
+  const items: { id: MobileSection; label: string; description: string }[] = [
+    { id: "cronograma", label: "Cronograma", description: "Voltar para agenda principal." },
+    { id: "financeiro", label: "Financeiro", description: "Ver balanco do dia, semana ou mes." },
+    { id: "bloqueios", label: "Bloqueios", description: "Bloquear horarios ou dias." },
+    { id: "horarios", label: "Marcar horarios", description: "Criar horarios personalizados." },
+    { id: "clientes", label: "Clientes", description: "Ver clientes cadastrados." },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm">
+      <button type="button" aria-label="Fechar menu" className="absolute inset-0" onClick={onClose} />
+      <div className="absolute inset-x-3 top-20 rounded-[28px] border border-white/10 bg-[rgba(18,18,18,0.98)] p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Menu do barbeiro</h3>
+          <button type="button" onClick={onClose} className="rounded-xl border border-white/10 px-3 py-2 text-sm">Fechar</button>
+        </div>
+        <div className="space-y-3">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelect(item.id)}
+              className={`w-full rounded-2xl border px-4 py-4 text-left ${current === item.id ? "border-[var(--accent)] bg-[var(--accent)]/15" : "border-white/10 bg-white/5"}`}
+            >
+              <p className="font-medium text-white">{item.label}</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">{item.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MobileScheduleSection({
+  agendaMode,
+  setAgendaMode,
+  dataOperacao,
+  setDataOperacao,
+  today,
+  semanaBase,
+  setSemanaBase,
+  slots,
+  operacaoDoDia,
+  resumoSemana,
+  expandedId,
+  setExpandedId,
+  loadingOperacao,
+  loadingSemana,
+  onCancelar,
+  onConcluir,
+  onNoShow,
+}: {
+  agendaMode: AgendaMode
+  setAgendaMode: (value: AgendaMode) => void
+  dataOperacao: string
+  setDataOperacao: (value: string) => void
+  today: string
+  semanaBase: string
+  setSemanaBase: (value: string) => void
+  slots: string[]
+  operacaoDoDia: Agendamento[]
+  resumoSemana: { data: string; ativos: Agendamento[]; receita: number; personalizados: number }[]
+  expandedId: string | null
+  setExpandedId: (value: string | null) => void
+  loadingOperacao: boolean
+  loadingSemana: boolean
+  onCancelar: (item: Agendamento) => void
+  onConcluir: (item: Agendamento) => void
+  onNoShow: (item: Agendamento) => void
+}) {
+  const timeline = slots.map((slot) => {
+    const item = operacaoDoDia.find((agendamento) => {
+      const inicio = timeToMinutes(agendamento.hora_inicio)
+      const fim = timeToMinutes(agendamento.hora_fim)
+      const current = timeToMinutes(slot)
+      return current >= inicio && current < fim && agendamento.status_agendamento !== "cancelado" && agendamento.status !== "cancelado"
+    })
+    return { slot, item: item ?? null }
+  })
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-[24px] border border-white/10 bg-[rgba(18,18,18,0.92)] p-4">
+        <div className="grid grid-cols-2 gap-2">
+          <QuickFilterButton label="Dia" onClick={() => setAgendaMode("dia")} active={agendaMode === "dia"} />
+          <QuickFilterButton label="Semana" onClick={() => setAgendaMode("semana")} active={agendaMode === "semana"} />
+        </div>
+        {agendaMode === "dia" ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
+            <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(addDays(today, 1))} />
+            <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input rounded-2xl border border-white/10 px-3 py-3" />
+          </div>
+        ) : (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <QuickFilterButton label="Atual" onClick={() => setSemanaBase(getStartOfWeek(today))} active={semanaBase === getStartOfWeek(today)} />
+            <QuickFilterButton label="Anterior" onClick={() => setSemanaBase(addDays(semanaBase, -7))} />
+            <QuickFilterButton label="Proxima" onClick={() => setSemanaBase(addDays(semanaBase, 7))} />
+          </div>
+        )}
+      </div>
+
+      {agendaMode === "dia" && (
+        <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(18,18,18,0.92)]">
+          <div className="grid grid-cols-[74px_1fr] border-b border-white/10 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
+            <span>Hora</span>
+            <span>Cronograma</span>
+          </div>
+          {loadingOperacao && <p className="px-4 py-6 text-[var(--muted)]">Carregando cronograma...</p>}
+          {!loadingOperacao && timeline.map(({ slot, item }, index) => {
+            const rowId = item ? `${item.id}-${slot}` : `empty-${dataOperacao}-${slot}`
+            const expanded = expandedId === rowId
+            return (
+              <div key={rowId} className={`border-b border-white/8 px-4 py-3 ${index % 2 === 0 ? "bg-white/[0.02]" : ""}`}>
+                <button type="button" onClick={() => setExpandedId(expanded ? null : rowId)} className="grid w-full grid-cols-[74px_1fr] items-start gap-3 text-left">
+                  <span className="pt-1 text-sm font-medium text-[var(--accent-strong)]">{slot}</span>
+                  <div>
+                    {!item && <p className="text-sm text-[var(--muted)]">Horario livre</p>}
+                    {item && (
+                      <>
+                        <p className="text-sm text-white">{item.servico_nome || "Servico nao informado"}</p>
+                        <p className="mt-1 text-sm text-[var(--muted)]">{item.nome_cliente}</p>
+                      </>
+                    )}
+                  </div>
+                </button>
+                {item && expanded && (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-3">
+                    <div className="space-y-2 text-sm">
+                      <InfoRow label="Horario" value={`${formatarHora(item.hora_inicio)} - ${formatarHora(item.hora_fim)}`} />
+                      <InfoRow label="Preco" value={moeda(Number(item.valor_final ?? item.servico_preco ?? 0))} />
+                      <InfoRow label="Status" value={badgeLabel(item)} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {normalizePhoneLink(item.celular_cliente) ? <a href={normalizePhoneLink(item.celular_cliente) || "#"} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200">WhatsApp</a> : <div />}
+                      {canConclude(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
+                      {canNoShow(item) && <QuickAction label="No-show" onClick={() => onNoShow(item)} />}
+                      {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => onCancelar(item)} />}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {agendaMode === "semana" && (
+        <div className="space-y-4">
+          {loadingSemana && <p className="text-[var(--muted)]">Carregando semana...</p>}
+          {!loadingSemana && resumoSemana.map((dia) => (
+            <div key={dia.data} className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(18,18,18,0.92)]">
+              <div className="border-b border-white/10 px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">{formatWeekday(dia.data)}</p>
+                <h3 className="mt-1 text-lg font-semibold">{formatarDataBR(dia.data)}</h3>
+              </div>
+              <div className="px-4 py-3">
+                {dia.ativos.length === 0 && <p className="text-sm text-[var(--muted)]">Sem horarios marcados.</p>}
+                <div className="space-y-3">
+                  {dia.ativos.map((item) => {
+                    const rowId = `week-${dia.data}-${item.id}`
+                    const expanded = expandedId === rowId
+                    return (
+                      <div key={rowId} className="rounded-2xl border border-white/10 bg-black/20">
+                        <button type="button" onClick={() => setExpandedId(expanded ? null : rowId)} className="grid w-full grid-cols-[68px_1fr] gap-3 px-3 py-3 text-left">
+                          <span className="text-sm font-medium text-[var(--accent-strong)]">{formatarHora(item.hora_inicio)}</span>
+                          <div>
+                            <p className="text-sm text-white">{item.servico_nome || "Servico nao informado"}</p>
+                            <p className="mt-1 text-sm text-[var(--muted)]">{item.nome_cliente}</p>
+                          </div>
+                        </button>
+                        {expanded && (
+                          <div className="border-t border-white/10 px-3 py-3">
+                            <div className="space-y-2 text-sm">
+                              <InfoRow label="Horario" value={`${formatarHora(item.hora_inicio)} - ${formatarHora(item.hora_fim)}`} />
+                              <InfoRow label="Preco" value={moeda(Number(item.valor_final ?? item.servico_preco ?? 0))} />
+                              <InfoRow label="Status" value={badgeLabel(item)} />
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              {normalizePhoneLink(item.celular_cliente) ? <a href={normalizePhoneLink(item.celular_cliente) || "#"} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200">WhatsApp</a> : <div />}
+                              {canConclude(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
+                              {canNoShow(item) && <QuickAction label="No-show" onClick={() => onNoShow(item)} />}
+                              {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => onCancelar(item)} />}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function BloqueiosPanel({
+  dataBloqueio,
+  setDataBloqueio,
+  tipoNovoBloqueio,
+  setTipoNovoBloqueio,
+  criarBloqueio,
+  bloqueios,
+  todosBloqueios,
+  deletarBloqueio,
+}: {
+  dataBloqueio: string
+  setDataBloqueio: (value: string) => void
+  tipoNovoBloqueio: Bloqueio["tipo_bloqueio"]
+  setTipoNovoBloqueio: (value: Bloqueio["tipo_bloqueio"]) => void
+  criarBloqueio: (e: React.FormEvent<HTMLFormElement>) => Promise<void>
+  bloqueios: Bloqueio[]
+  todosBloqueios: Bloqueio[]
+  deletarBloqueio: (id: string) => Promise<void>
+}) {
+  return (
+    <Panel title="Bloqueios" subtitle="Bloqueie horarios ou dias inteiros">
+      <form onSubmit={criarBloqueio} className="grid gap-4">
+        <input name="data" type="date" value={dataBloqueio} onChange={(e) => setDataBloqueio(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+        <div className="grid gap-2">
+          {(["horario", "dia_inteiro", "nao_aceitar_mais"] as Bloqueio["tipo_bloqueio"][]).map((tipo) => (
+            <label key={tipo} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+              <input type="radio" checked={tipoNovoBloqueio === tipo} onChange={() => setTipoNovoBloqueio(tipo)} />
+              <span>{tipo === "horario" ? "Bloquear horario especifico" : tipo === "dia_inteiro" ? "Bloquear dia inteiro" : "Nao aceitar mais horarios"}</span>
+            </label>
+          ))}
+        </div>
+        {tipoNovoBloqueio === "horario" && (
+          <div className="grid grid-cols-2 gap-3">
+            <input name="hora_inicio" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+            <input name="hora_fim" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+          </div>
+        )}
+        <input name="motivo" type="text" placeholder="Motivo do bloqueio" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+        <button type="submit" className="rounded-xl bg-[var(--accent)] px-4 py-3 font-medium text-black">Criar bloqueio</button>
+      </form>
+      <div className="mt-6 space-y-4">
+        {[...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].map((bloqueio) => (
+          <div key={bloqueio.id} className="flex justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+            <div>
+              <p className="text-white">{formatarDataBR(bloqueio.data)}</p>
+              <p className="text-sm text-[var(--muted)]">
+                {bloqueio.tipo_bloqueio === "horario"
+                  ? `${formatarHora(bloqueio.hora_inicio || "00:00")} - ${formatarHora(bloqueio.hora_fim || "23:59")}`
+                  : bloqueio.tipo_bloqueio === "dia_inteiro"
+                    ? "Dia inteiro"
+                    : "Nao aceitar mais horarios"}
+              </p>
+            </div>
+            <button onClick={() => deletarBloqueio(bloqueio.id)} className="text-sm text-red-300">Remover</button>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+function HorariosPanel({
+  dataHorarios,
+  setDataHorarios,
+  criarHorario,
+  horarios,
+  deletarHorario,
+}: {
+  dataHorarios: string
+  setDataHorarios: (value: string) => void
+  criarHorario: (e: React.FormEvent<HTMLFormElement>) => Promise<void>
+  horarios: HorarioCustomizado[]
+  deletarHorario: (id: string) => Promise<void>
+}) {
+  return (
+    <Panel title="Marcar horarios" subtitle="Crie horarios personalizados">
+      <form onSubmit={criarHorario} className="grid gap-4">
+        <input name="data-horario" type="date" value={dataHorarios} onChange={(e) => setDataHorarios(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+        <input name="nome_cliente" type="text" placeholder="Nome do cliente" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+        <input name="celular_cliente" type="text" placeholder="Celular do cliente" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+        <div className="grid grid-cols-2 gap-3">
+          <input name="hora_inicio" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+          <input name="hora_fim" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+        </div>
+        <button type="submit" className="rounded-xl bg-emerald-500 px-4 py-3 font-medium text-black">Salvar horario</button>
+      </form>
+      <div className="mt-6 space-y-4">
+        {horarios.length === 0 && <p className="text-[var(--muted)]">Nenhum horario personalizado cadastrado.</p>}
+        {horarios.map((horario) => (
+          <div key={horario.id} className="flex justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+            <div>
+              <p className="text-white">{formatarHora(horario.hora_inicio)} - {formatarHora(horario.hora_fim)}</p>
+              <p className="text-sm text-zinc-300">{horario.nome_cliente || "Sem nome"}</p>
+            </div>
+            <button onClick={() => deletarHorario(horario.id)} className="text-sm text-red-300">Remover</button>
+          </div>
+        ))}
       </div>
     </Panel>
   )
