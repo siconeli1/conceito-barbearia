@@ -6,7 +6,8 @@ import { formatarHora, getTodayInputValue } from "@/lib/format"
 type StatusAgendamento = "agendado" | "confirmado" | "cancelado" | "no_show"
 type StatusAtendimento = "pendente" | "em_atendimento" | "concluido"
 type StatusPagamento = "pendente" | "pago" | "estornado"
-type View = "operacao" | "financeiro" | "clientes" | "bloqueios" | "horarios"
+type View = "operacao" | "agenda" | "clientes" | "financeiro" | "mais"
+type AgendaMode = "dia" | "semana"
 
 type Agendamento = {
   id: string
@@ -59,11 +60,11 @@ type DraftFinanceiro = {
 }
 
 const NAV_ITEMS: { id: View; label: string; shortLabel: string }[] = [
-  { id: "operacao", label: "Operacao", shortLabel: "Hoje" },
-  { id: "financeiro", label: "Financeiro", shortLabel: "Caixa" },
+  { id: "operacao", label: "Hoje", shortLabel: "Hoje" },
+  { id: "agenda", label: "Agenda", shortLabel: "Agenda" },
   { id: "clientes", label: "Clientes", shortLabel: "Clientes" },
-  { id: "bloqueios", label: "Bloqueios", shortLabel: "Bloq." },
-  { id: "horarios", label: "Horarios", shortLabel: "Manual" },
+  { id: "financeiro", label: "Financeiro", shortLabel: "Caixa" },
+  { id: "mais", label: "Mais", shortLabel: "Mais" },
 ]
 
 function formatarDataBR(data: string) {
@@ -78,6 +79,29 @@ function moeda(valor: number) {
 function timeToMinutes(hora: string) {
   const [h, m] = hora.slice(0, 5).split(":").map(Number)
   return h * 60 + m
+}
+
+function addDays(dateIso: string, amount: number) {
+  const [year, month, day] = dateIso.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + amount)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function getStartOfWeek(dateIso: string) {
+  const [year, month, day] = dateIso.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
+  const dayOfWeek = date.getDay()
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  date.setDate(date.getDate() + diff)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function formatWeekday(dateIso: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(`${dateIso}T12:00:00`))
 }
 
 function getCurrentMinutesInSaoPaulo(referenceDate = new Date()) {
@@ -135,11 +159,17 @@ function normalizePhoneLink(phone?: string | null) {
 export default function AdminPage() {
   const today = getTodayInputValue()
   const [view, setView] = useState<View>("operacao")
+  const [agendaMode, setAgendaMode] = useState<AgendaMode>("dia")
   const [dataOperacao, setDataOperacao] = useState(today)
-  const [dateFrom, setDateFrom] = useState(today)
-  const [dateTo, setDateTo] = useState(today)
+  const [semanaBase, setSemanaBase] = useState(getStartOfWeek(today))
+  const [financeDateFrom, setFinanceDateFrom] = useState(today)
+  const [financeDateTo, setFinanceDateTo] = useState(today)
+  const [clientesDateFrom, setClientesDateFrom] = useState(today)
+  const [clientesDateTo, setClientesDateTo] = useState(today)
   const [agendamentosDia, setAgendamentosDia] = useState<Agendamento[]>([])
-  const [agendamentosPeriodo, setAgendamentosPeriodo] = useState<Agendamento[]>([])
+  const [agendamentosSemana, setAgendamentosSemana] = useState<Agendamento[]>([])
+  const [agendamentosFinanceiro, setAgendamentosFinanceiro] = useState<Agendamento[]>([])
+  const [agendamentosClientes, setAgendamentosClientes] = useState<Agendamento[]>([])
   const [bloqueios, setBloqueios] = useState<Bloqueio[]>([])
   const [todosBloqueios, setTodosBloqueios] = useState<Bloqueio[]>([])
   const [horarios, setHorarios] = useState<HorarioCustomizado[]>([])
@@ -147,14 +177,22 @@ export default function AdminPage() {
   const [dataHorarios, setDataHorarios] = useState(today)
   const [tipoNovoBloqueio, setTipoNovoBloqueio] = useState<Bloqueio["tipo_bloqueio"]>("horario")
   const [loadingOperacao, setLoadingOperacao] = useState(true)
-  const [loadingPeriodo, setLoadingPeriodo] = useState(true)
+  const [loadingSemana, setLoadingSemana] = useState(true)
+  const [loadingFinanceiro, setLoadingFinanceiro] = useState(true)
+  const [loadingClientes, setLoadingClientes] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, DraftFinanceiro>>({})
+  const [buscaCliente, setBuscaCliente] = useState("")
+
   const operacaoRequestRef = useRef(0)
-  const periodoRequestRef = useRef(0)
+  const semanaRequestRef = useRef(0)
+  const financeiroRequestRef = useRef(0)
+  const clientesRequestRef = useRef(0)
   const operacaoAbortRef = useRef<AbortController | null>(null)
-  const periodoAbortRef = useRef<AbortController | null>(null)
+  const semanaAbortRef = useRef<AbortController | null>(null)
+  const financeiroAbortRef = useRef<AbortController | null>(null)
+  const clientesAbortRef = useRef<AbortController | null>(null)
 
   const carregarOperacao = useCallback(async (data: string) => {
     const requestId = ++operacaoRequestRef.current
@@ -163,10 +201,9 @@ export default function AdminPage() {
     operacaoAbortRef.current = controller
     setLoadingOperacao(true)
     setErro(null)
+
     try {
-      const res = await fetch(`/api/admin-agenda?data=${encodeURIComponent(data)}`, {
-        signal: controller.signal,
-      })
+      const res = await fetch(`/api/admin-agenda?data=${encodeURIComponent(data)}`, { signal: controller.signal })
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao carregar agenda."))
       if (requestId !== operacaoRequestRef.current || controller.signal.aborted) return
@@ -182,38 +219,62 @@ export default function AdminPage() {
     }
   }, [])
 
-  const carregarPeriodo = useCallback(async (from: string, to: string) => {
-    const requestId = ++periodoRequestRef.current
-    periodoAbortRef.current?.abort()
-    const controller = new AbortController()
-    periodoAbortRef.current = controller
-    setLoadingPeriodo(true)
-    try {
-      const res = await fetch(
-        `/api/admin-agenda?date_from=${encodeURIComponent(from)}&date_to=${encodeURIComponent(to)}`,
-        { signal: controller.signal }
-      )
-      const json = await lerRespostaJson(res)
-      if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao carregar periodo."))
-      if (requestId !== periodoRequestRef.current || controller.signal.aborted) return
-      setAgendamentosPeriodo(Array.isArray(json) ? (json as Agendamento[]) : [])
-    } catch (error) {
-      if (requestId !== periodoRequestRef.current || controller.signal.aborted) return
-      setErro(error instanceof Error ? error.message : "Erro ao carregar periodo.")
-      setAgendamentosPeriodo([])
-    } finally {
-      if (requestId === periodoRequestRef.current && !controller.signal.aborted) {
-        setLoadingPeriodo(false)
+  const carregarFaixa = useCallback(
+    async (
+      from: string,
+      to: string,
+      requestRef: React.MutableRefObject<number>,
+      abortRef: React.MutableRefObject<AbortController | null>,
+      setLoading: (value: boolean) => void,
+      setData: (value: Agendamento[]) => void,
+      errorMessage: string
+    ) => {
+      const requestId = ++requestRef.current
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      setLoading(true)
+
+      try {
+        const res = await fetch(
+          `/api/admin-agenda?date_from=${encodeURIComponent(from)}&date_to=${encodeURIComponent(to)}`,
+          { signal: controller.signal }
+        )
+        const json = await lerRespostaJson(res)
+        if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || errorMessage))
+        if (requestId !== requestRef.current || controller.signal.aborted) return
+        setData(Array.isArray(json) ? (json as Agendamento[]) : [])
+      } catch (error) {
+        if (requestId !== requestRef.current || controller.signal.aborted) return
+        setErro(error instanceof Error ? error.message : errorMessage)
+        setData([])
+      } finally {
+        if (requestId === requestRef.current && !controller.signal.aborted) {
+          setLoading(false)
+        }
       }
-    }
-  }, [])
+    },
+    []
+  )
+
+  const carregarSemana = useCallback(async (from: string, to: string) => {
+    await carregarFaixa(from, to, semanaRequestRef, semanaAbortRef, setLoadingSemana, setAgendamentosSemana, "Erro ao carregar semana.")
+  }, [carregarFaixa])
+
+  const carregarFinanceiro = useCallback(async (from: string, to: string) => {
+    await carregarFaixa(from, to, financeiroRequestRef, financeiroAbortRef, setLoadingFinanceiro, setAgendamentosFinanceiro, "Erro ao carregar financeiro.")
+  }, [carregarFaixa])
+
+  const carregarClientes = useCallback(async (from: string, to: string) => {
+    await carregarFaixa(from, to, clientesRequestRef, clientesAbortRef, setLoadingClientes, setAgendamentosClientes, "Erro ao carregar clientes.")
+  }, [carregarFaixa])
 
   const carregarBloqueios = useCallback(async (data: string) => {
     try {
       const res = await fetch(`/api/bloqueios?data=${data}`)
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao carregar bloqueios."))
-      setBloqueios((((json as Record<string, unknown>).bloqueios as Bloqueio[]) || []))
+      setBloqueios(((json as Record<string, unknown>).bloqueios as Bloqueio[]) || [])
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao carregar bloqueios.")
       setBloqueios([])
@@ -239,7 +300,7 @@ export default function AdminPage() {
       const res = await fetch(`/api/horarios-customizados?data=${data}`)
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao carregar horarios."))
-      setHorarios((((json as Record<string, unknown>).horarios as HorarioCustomizado[]) || []))
+      setHorarios(((json as Record<string, unknown>).horarios as HorarioCustomizado[]) || [])
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao carregar horarios.")
       setHorarios([])
@@ -251,28 +312,33 @@ export default function AdminPage() {
   }, [carregarOperacao, dataOperacao])
 
   useEffect(() => {
-    carregarPeriodo(dateFrom, dateTo)
-  }, [carregarPeriodo, dateFrom, dateTo])
+    carregarSemana(semanaBase, addDays(semanaBase, 6))
+  }, [carregarSemana, semanaBase])
+
+  useEffect(() => {
+    carregarFinanceiro(financeDateFrom, financeDateTo)
+  }, [carregarFinanceiro, financeDateFrom, financeDateTo])
+
+  useEffect(() => {
+    carregarClientes(clientesDateFrom, clientesDateTo)
+  }, [carregarClientes, clientesDateFrom, clientesDateTo])
+
+  useEffect(() => {
+    if (view === "mais") {
+      carregarBloqueios(dataBloqueio)
+      carregarTodosBloqueios()
+      carregarHorarios(dataHorarios)
+    }
+  }, [view, dataBloqueio, dataHorarios, carregarBloqueios, carregarTodosBloqueios, carregarHorarios])
 
   useEffect(() => {
     return () => {
       operacaoAbortRef.current?.abort()
-      periodoAbortRef.current?.abort()
+      semanaAbortRef.current?.abort()
+      financeiroAbortRef.current?.abort()
+      clientesAbortRef.current?.abort()
     }
   }, [])
-
-  useEffect(() => {
-    if (view === "bloqueios") {
-      carregarBloqueios(dataBloqueio)
-      carregarTodosBloqueios()
-    }
-  }, [view, dataBloqueio, carregarBloqueios, carregarTodosBloqueios])
-
-  useEffect(() => {
-    if (view === "horarios") {
-      carregarHorarios(dataHorarios)
-    }
-  }, [view, dataHorarios, carregarHorarios])
 
   useEffect(() => {
     if (!mensagem) return
@@ -280,10 +346,8 @@ export default function AdminPage() {
     return () => clearTimeout(timer)
   }, [mensagem])
 
-  const agendamentosFiltradosDia = agendamentosDia
-
   const metricasDia = useMemo(() => {
-    const reais = agendamentosFiltradosDia.filter((item) => item.origem !== "horario_customizado")
+    const reais = agendamentosDia.filter((item) => item.origem !== "horario_customizado")
     const receitaPrevista = reais
       .filter((item) => item.status_agendamento !== "cancelado")
       .reduce((acc, item) => acc + Number(item.valor_final ?? item.servico_preco ?? 0), 0)
@@ -292,13 +356,13 @@ export default function AdminPage() {
 
     return {
       agendados: reais.length,
-      personalizados: agendamentosFiltradosDia.filter((item) => item.origem === "horario_customizado").length,
+      personalizados: agendamentosDia.filter((item) => item.origem === "horario_customizado").length,
       receitaPrevista,
       receitaRealizada,
       ticketMedio: realizados.length ? receitaRealizada / realizados.length : 0,
       pendenciasPagamento: reais.filter((item) => item.status_atendimento === "concluido" && item.status_pagamento !== "pago").length,
     }
-  }, [agendamentosFiltradosDia])
+  }, [agendamentosDia])
 
   const servicosDoDia = useMemo(() => {
     return Array.from(
@@ -312,7 +376,7 @@ export default function AdminPage() {
   }, [agendamentosDia])
 
   const metricasFinanceiras = useMemo(() => {
-    const reais = agendamentosPeriodo.filter((item) => item.origem !== "horario_customizado")
+    const reais = agendamentosFinanceiro.filter((item) => item.origem !== "horario_customizado")
     const previstos = reais.filter((item) => item.status_agendamento !== "cancelado")
     const realizados = reais.filter((item) => item.status_atendimento === "concluido")
     const pagos = realizados.filter((item) => item.status_pagamento === "pago")
@@ -324,9 +388,7 @@ export default function AdminPage() {
     const porServico = Object.values(
       reais.reduce<Record<string, { nome: string; total: number; receita: number }>>((acc, item) => {
         const nome = item.servico_nome || "Nao informado"
-        if (!acc[nome]) {
-          acc[nome] = { nome, total: 0, receita: 0 }
-        }
+        if (!acc[nome]) acc[nome] = { nome, total: 0, receita: 0 }
         acc[nome].total += 1
         acc[nome].receita += Number(item.valor_final ?? item.servico_preco ?? 0)
         return acc
@@ -336,9 +398,7 @@ export default function AdminPage() {
     const porPagamento = Object.values(
       pagos.reduce<Record<string, { forma: string; total: number; receita: number }>>((acc, item) => {
         const forma = item.forma_pagamento || "Nao informado"
-        if (!acc[forma]) {
-          acc[forma] = { forma, total: 0, receita: 0 }
-        }
+        if (!acc[forma]) acc[forma] = { forma, total: 0, receita: 0 }
         acc[forma].total += 1
         acc[forma].receita += Number(item.valor_final ?? item.servico_preco ?? 0)
         return acc
@@ -356,23 +416,16 @@ export default function AdminPage() {
       porServico,
       porPagamento,
     }
-  }, [agendamentosPeriodo])
+  }, [agendamentosFinanceiro])
 
   const metricasClientes = useMemo(() => {
-    const reais = agendamentosPeriodo.filter((item) => item.origem !== "horario_customizado")
+    const reais = agendamentosClientes.filter((item) => item.origem !== "horario_customizado")
     return Object.values(
-      reais.reduce<Record<string, {
-        celular: string
-        nome: string
-        total: number
-        receita: number
-        cancelados: number
-        ultData: string
-      }>>((acc, item) => {
+      reais.reduce<Record<string, { celular: string; nome: string; total: number; receita: number; cancelados: number; ultData: string }>>((acc, item) => {
         const key = item.celular_cliente || item.id
         if (!acc[key]) {
           acc[key] = {
-            celular: item.celular_cliente,
+            celular: item.celular_cliente || "",
             nome: item.nome_cliente,
             total: 0,
             receita: 0,
@@ -382,9 +435,7 @@ export default function AdminPage() {
         }
         acc[key].total += 1
         acc[key].receita += Number(item.valor_final ?? item.servico_preco ?? 0)
-        if (item.status_agendamento === "cancelado") {
-          acc[key].cancelados += 1
-        }
+        if (item.status_agendamento === "cancelado") acc[key].cancelados += 1
         if (item.data > acc[key].ultData) {
           acc[key].ultData = item.data
           acc[key].nome = item.nome_cliente
@@ -392,7 +443,78 @@ export default function AdminPage() {
         return acc
       }, {})
     ).sort((a, b) => b.receita - a.receita)
-  }, [agendamentosPeriodo])
+  }, [agendamentosClientes])
+
+  const clientesFiltrados = useMemo(() => {
+    const termo = buscaCliente.trim().toLowerCase()
+    if (!termo) return metricasClientes
+    return metricasClientes.filter((cliente) => {
+      return cliente.nome.toLowerCase().includes(termo) || cliente.celular.toLowerCase().includes(termo)
+    })
+  }, [buscaCliente, metricasClientes])
+
+  const operacaoAtiva = useMemo(
+    () => agendamentosDia.filter((item) => item.status_agendamento !== "cancelado" && item.status !== "cancelado"),
+    [agendamentosDia]
+  )
+  const operacaoCancelada = useMemo(
+    () => agendamentosDia.filter((item) => item.status_agendamento === "cancelado" || item.status === "cancelado"),
+    [agendamentosDia]
+  )
+  const minutosAtuais = getCurrentMinutesInSaoPaulo()
+  const proximosHorarios = useMemo(
+    () =>
+      operacaoAtiva
+        .filter((item) => dataOperacao !== today || timeToMinutes(item.hora_inicio) > minutosAtuais)
+        .slice()
+        .sort((a, b) => `${a.data}T${a.hora_inicio}`.localeCompare(`${b.data}T${b.hora_inicio}`))
+        .slice(0, 5),
+    [dataOperacao, minutosAtuais, operacaoAtiva, today]
+  )
+  const atendimentoAtual = useMemo(
+    () =>
+      operacaoAtiva.find((item) => {
+        const inicio = timeToMinutes(item.hora_inicio)
+        const fim = timeToMinutes(item.hora_fim)
+        return dataOperacao === today && minutosAtuais >= inicio && minutosAtuais < fim
+      }) ?? null,
+    [dataOperacao, minutosAtuais, operacaoAtiva, today]
+  )
+  const proximoHorario = proximosHorarios[0] ?? null
+  const clientesPendentesHoje = operacaoAtiva.filter(
+    (item) =>
+      item.origem !== "horario_customizado" &&
+      item.status_atendimento !== "concluido" &&
+      timeToMinutes(item.hora_inicio) >= minutosAtuais
+  ).length
+
+  const resumoSemana = useMemo(() => {
+    return Array.from({ length: 7 }, (_, index) => {
+      const data = addDays(semanaBase, index)
+      const ativos = agendamentosSemana
+        .filter((item) => item.data === data && item.status_agendamento !== "cancelado" && item.status !== "cancelado")
+        .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio))
+      const receita = ativos
+        .filter((item) => item.origem !== "horario_customizado")
+        .reduce((acc, item) => acc + Number(item.valor_final ?? item.servico_preco ?? 0), 0)
+
+      return {
+        data,
+        ativos,
+        receita,
+        personalizados: ativos.filter((item) => item.origem === "horario_customizado").length,
+      }
+    })
+  }, [agendamentosSemana, semanaBase])
+
+  const totalSemana = resumoSemana.reduce(
+    (acc, dia) => ({
+      atendimentos: acc.atendimentos + dia.ativos.filter((item) => item.origem !== "horario_customizado").length,
+      personalizados: acc.personalizados + dia.personalizados,
+      receita: acc.receita + dia.receita,
+    }),
+    { atendimentos: 0, personalizados: 0, receita: 0 }
+  )
 
   function getDraft(item: Agendamento): DraftFinanceiro {
     return drafts[item.id] || {
@@ -423,6 +545,15 @@ export default function AdminPage() {
     }))
   }
 
+  async function refreshAll() {
+    await Promise.all([
+      carregarOperacao(dataOperacao),
+      carregarSemana(semanaBase, addDays(semanaBase, 6)),
+      carregarFinanceiro(financeDateFrom, financeDateTo),
+      carregarClientes(clientesDateFrom, clientesDateTo),
+    ])
+  }
+
   async function atualizarAgendamento(id: string, patch: Record<string, string | number | null>) {
     setErro(null)
     setMensagem(null)
@@ -435,7 +566,7 @@ export default function AdminPage() {
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao atualizar agendamento."))
       setMensagem("Agendamento atualizado com sucesso.")
-      await Promise.all([carregarOperacao(dataOperacao), carregarPeriodo(dateFrom, dateTo)])
+      await refreshAll()
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao atualizar agendamento.")
     }
@@ -475,8 +606,7 @@ export default function AdminPage() {
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao criar bloqueio."))
       setMensagem("Bloqueio criado com sucesso.")
       setDataBloqueio(data)
-      await carregarBloqueios(data)
-      await carregarTodosBloqueios()
+      await Promise.all([carregarBloqueios(data), carregarTodosBloqueios()])
       ;(e.currentTarget as HTMLFormElement).reset()
       setTipoNovoBloqueio("horario")
     } catch (error) {
@@ -497,8 +627,7 @@ export default function AdminPage() {
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao remover bloqueio."))
       setMensagem("Bloqueio removido com sucesso.")
-      await carregarBloqueios(dataBloqueio)
-      await carregarTodosBloqueios()
+      await Promise.all([carregarBloqueios(dataBloqueio), carregarTodosBloqueios()])
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao remover bloqueio.")
     }
@@ -524,7 +653,7 @@ export default function AdminPage() {
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao criar horario."))
       setMensagem("Horario personalizado criado com sucesso.")
-      await Promise.all([carregarHorarios(dataHorarios), carregarOperacao(dataOperacao)])
+      await Promise.all([carregarHorarios(dataHorarios), refreshAll()])
       ;(e.currentTarget as HTMLFormElement).reset()
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao criar horario.")
@@ -544,42 +673,22 @@ export default function AdminPage() {
       const json = await lerRespostaJson(res)
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao remover horario."))
       setMensagem("Horario removido com sucesso.")
-      await Promise.all([carregarHorarios(dataHorarios), carregarOperacao(dataOperacao)])
+      await Promise.all([carregarHorarios(dataHorarios), refreshAll()])
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao remover horario.")
     }
   }
 
-  const operacaoDoDia = agendamentosFiltradosDia
-  const operacaoAtiva = operacaoDoDia.filter(
-    (item) => item.status_agendamento !== "cancelado" && item.status !== "cancelado"
-  )
-  const operacaoCancelada = operacaoDoDia.filter(
-    (item) => item.status_agendamento === "cancelado" || item.status === "cancelado"
-  )
-  const minutosAtuais = getCurrentMinutesInSaoPaulo()
-  const proximosHorarios = operacaoAtiva
-    .filter((item) => dataOperacao !== today || timeToMinutes(item.hora_inicio) > minutosAtuais)
-    .slice()
-    .sort((a, b) => `${a.data}T${a.hora_inicio}`.localeCompare(`${b.data}T${b.hora_inicio}`))
-    .slice(0, 5)
-  const atendimentoAtual = operacaoAtiva.find((item) => {
-    const inicio = timeToMinutes(item.hora_inicio)
-    const fim = timeToMinutes(item.hora_fim)
-    return dataOperacao === today && minutosAtuais >= inicio && minutosAtuais < fim
-  })
-  const proximoHorario = proximosHorarios[0] ?? null
-
   return (
-    <main className="min-h-screen text-white px-4 py-4 sm:p-8">
-      <div className="max-w-7xl mx-auto pb-24 md:pb-8">
-        <header className="mb-6 border border-[var(--line)] bg-black/30 backdrop-blur-sm rounded-[28px] p-5 sm:p-8 sticky top-3 z-20">
+    <main className="min-h-screen px-4 py-4 text-white sm:p-8">
+      <div className="mx-auto max-w-7xl pb-24 md:pb-8">
+        <header className="sticky top-3 z-20 mb-6 rounded-[28px] border border-[var(--line)] bg-black/30 p-5 backdrop-blur-sm sm:p-8">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.32em] text-[var(--accent-strong)] mb-2">Conceito Barbearia</p>
-              <h1 className="text-2xl sm:text-5xl font-semibold tracking-tight">Painel do barbeiro</h1>
-              <p className="text-sm sm:text-base text-[var(--muted)] mt-2 max-w-2xl">
-                Operacao do dia primeiro, com acesso rapido ao restante quando precisar.
+              <p className="mb-2 text-[10px] uppercase tracking-[0.32em] text-[var(--accent-strong)]">Conceito Barbearia</p>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-5xl">Painel do barbeiro</h1>
+              <p className="mt-2 max-w-2xl text-sm text-[var(--muted)] sm:text-base">
+                Operacao primeiro, semana quando precisar e funcoes administrativas organizadas.
               </p>
             </div>
             <button
@@ -587,14 +696,14 @@ export default function AdminPage() {
                 await fetch("/api/admin/logout", { method: "POST" })
                 window.location.href = "/admin/login"
               }}
-              className="px-4 py-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 h-fit text-sm"
+              className="h-fit rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10"
             >
               Sair
             </button>
           </div>
         </header>
 
-        <nav className="hidden md:flex gap-2 overflow-x-auto mb-6">
+        <nav className="mb-6 hidden gap-2 overflow-x-auto md:flex">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
@@ -603,10 +712,8 @@ export default function AdminPage() {
                 setErro(null)
                 setMensagem(null)
               }}
-              className={`rounded-full px-4 py-2 text-sm whitespace-nowrap transition ${
-                view === item.id
-                  ? "bg-[var(--accent)] text-black"
-                  : "bg-white/5 border border-white/10 text-white hover:bg-white/10"
+              className={`whitespace-nowrap rounded-full px-4 py-2 text-sm transition ${
+                view === item.id ? "bg-[var(--accent)] text-black" : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
               }`}
             >
               {item.label}
@@ -619,44 +726,35 @@ export default function AdminPage() {
 
         {view === "operacao" && (
           <section className="space-y-6">
-            <div className="grid xl:grid-cols-[1.1fr_0.9fr] gap-6">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetricCard titulo="Pendentes hoje" valor={String(clientesPendentesHoje)} />
+              <MetricCard titulo="Receita do dia" valor={moeda(metricasDia.receitaPrevista)} accent />
+              <MetricCard titulo="Proximo horario" valor={proximoHorario ? formatarHora(proximoHorario.hora_inicio) : "--:--"} success />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <MoreActionCard title="Abrir semana" description="Visao ampla dos proximos 7 dias." onClick={() => { setView("agenda"); setAgendaMode("semana") }} />
+              <MoreActionCard title="Bloquear ou adicionar" description="Acesse bloqueios e horarios manuais." onClick={() => setView("mais")} />
+              <MoreActionCard title="Ver clientes" description="Busque historico e chame no WhatsApp." onClick={() => setView("clientes")} />
+              <MoreActionCard title="Ver faturamento" description="Acompanhe caixa, servicos e pagamentos." onClick={() => setView("financeiro")} />
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-6">
                 <Panel title="Agora" subtitle={`Resumo rapido de ${formatarDataBR(dataOperacao)}`}>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <SpotlightCard
-                      label="Em atendimento"
-                      emptyLabel="Nenhum atendimento em andamento"
-                      item={atendimentoAtual ?? null}
-                    />
-                    <SpotlightCard
-                      label="Proximo cliente"
-                      emptyLabel="Sem proximos horarios"
-                      item={proximoHorario}
-                    />
+                    <SpotlightCard label="Em atendimento" emptyLabel="Nenhum atendimento em andamento" item={atendimentoAtual} />
+                    <SpotlightCard label="Proximo cliente" emptyLabel="Sem proximos horarios" item={proximoHorario} />
                   </div>
                 </Panel>
 
-                <Panel title="Agenda do dia" subtitle="Linha do tempo mobile-first">
-                  <div className="space-y-4 mb-5">
-                    <input
-                      type="date"
-                      value={dataOperacao}
-                      onChange={(e) => setDataOperacao(e.target.value)}
-                      className="datetime-input text-white w-full px-4 py-3 rounded-2xl border border-white/10"
-                    />
+                <Panel title="Agenda do dia" subtitle="Linha do tempo com acoes operacionais">
+                  <div className="mb-5 space-y-4">
+                    <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input w-full rounded-2xl border border-white/10 px-4 py-3 text-white" />
                     <div className="grid grid-cols-3 gap-2">
                       <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
-                      <QuickFilterButton
-                        label="Amanha"
-                        onClick={() => {
-                          const base = new Date(`${today}T00:00:00`)
-                          base.setDate(base.getDate() + 1)
-                          setDataOperacao(base.toISOString().slice(0, 10))
-                        }}
-                      />
-                      <div className="px-3 py-3 rounded-2xl border border-white/10 bg-white/5 text-center text-xs text-[var(--muted)]">
-                        {servicosDoDia.length} servico(s)
-                      </div>
+                      <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(addDays(today, 1))} />
+                      <QuickFilterButton label="Semana" onClick={() => { setSemanaBase(getStartOfWeek(dataOperacao)); setView("agenda"); setAgendaMode("semana") }} />
                     </div>
                     {servicosDoDia.length > 0 && (
                       <div className="flex flex-wrap gap-2">
@@ -669,7 +767,7 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                  <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
                     <MetricCard titulo="Agend." valor={String(metricasDia.agendados)} />
                     <MetricCard titulo="Manuais" valor={String(metricasDia.personalizados)} />
                     <MetricCard titulo="Previsto" valor={moeda(metricasDia.receitaPrevista)} accent />
@@ -679,85 +777,58 @@ export default function AdminPage() {
 
                   <div className="space-y-4">
                     {loadingOperacao && <p className="text-[var(--muted)]">Carregando...</p>}
-                    {!loadingOperacao && operacaoDoDia.length === 0 && <p className="text-[var(--muted)]">Nenhum item para {formatarDataBR(dataOperacao)}.</p>}
-
-                    {!loadingOperacao && operacaoAtiva.length > 0 && operacaoAtiva.map((item) => {
+                    {!loadingOperacao && agendamentosDia.length === 0 && <p className="text-[var(--muted)]">Nenhum item para {formatarDataBR(dataOperacao)}.</p>}
+                    {!loadingOperacao && operacaoAtiva.map((item) => {
                       const draft = getDraft(item)
                       const whatsappHref = normalizePhoneLink(item.celular_cliente)
                       return (
                         <article key={item.id} className="rounded-[24px] border border-white/10 bg-black/25 p-4">
-                          <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="mb-3 flex items-start justify-between gap-3">
                             <div>
                               <p className="text-2xl font-semibold">{formatarHora(item.hora_inicio)}</p>
                               <p className="text-sm text-[var(--muted)]">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
                             </div>
                             <Badge label={badgeLabel(item)} />
                           </div>
-
                           <p className="text-lg text-white">{item.nome_cliente}</p>
-                          <p className="text-sm text-[var(--muted)] mt-1">{item.celular_cliente || "Sem telefone"}</p>
-                          <p className="text-sm mt-2 text-zinc-200">{item.servico_nome || "Servico nao informado"}</p>
-                          <div className="flex flex-wrap gap-3 text-sm mt-3">
-                            <span className="text-[var(--accent-strong)]">Previsto {moeda(Number(item.valor_final ?? item.servico_preco ?? 0))}</span>
-                            {item.origem !== "horario_customizado" && <span className="text-[var(--muted)]">Status {badgeLabel(item)}</span>}
+                          <p className="mt-1 text-sm text-[var(--muted)]">{item.celular_cliente || "Sem telefone"}</p>
+                          <p className="mt-2 text-sm text-zinc-200">{item.servico_nome || "Servico nao informado"}</p>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            {whatsappHref ? <a href={whatsappHref} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200 hover:bg-emerald-500/30">WhatsApp</a> : <div />}
+                            {canConclude(item) && <QuickAction label="Concluir" onClick={() => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })} />}
+                            {canNoShow(item) && <QuickAction label="No-show" onClick={() => atualizarAgendamento(item.id, { status_agendamento: "no_show" })} />}
+                            {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => item.origem === "horario_customizado" ? deletarHorario(item.id) : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })} />}
                           </div>
-
-                          <div className="grid grid-cols-2 gap-2 mt-4">
-                            {whatsappHref ? (
-                              <a href={whatsappHref} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 text-emerald-200 px-4 py-3 text-sm text-center hover:bg-emerald-500/30">
-                                WhatsApp
-                              </a>
-                            ) : <div />}
-                            {canConclude(item) && (
-                              <QuickAction label="Concluir" onClick={() => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })} />
-                            )}
-                            {canNoShow(item) && (
-                              <QuickAction label="No-show" onClick={() => atualizarAgendamento(item.id, { status_agendamento: "no_show" })} />
-                            )}
-                            {canCancel(item) && (
-                              <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => item.origem === "horario_customizado" ? deletarHorario(item.id) : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })} />
-                            )}
-                          </div>
-
                           {item.origem !== "horario_customizado" && (
                             <CollapsibleCard title="Ajuste financeiro" subtitle="Abra so quando precisar">
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                              <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                                 <InputMoney label="Desconto" value={draft.desconto} onChange={(value) => setDraft(item.id, { desconto: value })} />
                                 <InputMoney label="Acrescimo" value={draft.acrescimo} onChange={(value) => setDraft(item.id, { acrescimo: value })} />
                                 <InputMoney label="Valor final" value={draft.valor_final} onChange={(value) => setDraft(item.id, { valor_final: value })} />
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3">
-                                <select value={draft.forma_pagamento} onChange={(e) => setDraft(item.id, { forma_pagamento: e.target.value })} className="bg-black/30 border border-white/10 rounded-xl px-3 py-3">
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
+                                <select value={draft.forma_pagamento} onChange={(e) => setDraft(item.id, { forma_pagamento: e.target.value })} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
                                   <option value="">Forma de pagamento</option>
                                   <option value="pix">Pix</option>
                                   <option value="dinheiro">Dinheiro</option>
                                   <option value="credito">Credito</option>
                                   <option value="debito">Debito</option>
                                 </select>
-                                <input value={draft.observacoes} onChange={(e) => setDraft(item.id, { observacoes: e.target.value })} placeholder="Observacoes do atendimento" className="bg-black/30 border border-white/10 rounded-xl px-3 py-3" />
+                                <input value={draft.observacoes} onChange={(e) => setDraft(item.id, { observacoes: e.target.value })} placeholder="Observacoes do atendimento" className="rounded-xl border border-white/10 bg-black/30 px-3 py-3" />
                               </div>
-                              <button onClick={() => salvarFinanceiro(item)} className="mt-4 w-full rounded-2xl bg-[var(--accent)] text-black px-4 py-3 text-sm font-medium hover:opacity-90">
-                                Salvar ajuste
-                              </button>
+                              <button onClick={() => salvarFinanceiro(item)} className="mt-4 w-full rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-medium text-black">Salvar ajuste</button>
                             </CollapsibleCard>
                           )}
                         </article>
                       )
                     })}
-
                     {!loadingOperacao && operacaoCancelada.length > 0 && (
                       <CollapsibleCard title={`Cancelados (${operacaoCancelada.length})`} subtitle="Toque para expandir">
                         <div className="space-y-3">
                           {operacaoCancelada.map((item) => (
                             <article key={item.id} className="rounded-2xl border border-red-500/10 bg-red-500/[0.04] p-4 opacity-85">
-                              <div className="flex items-start justify-between gap-4">
-                                <div>
-                                  <p className="text-lg font-semibold">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
-                                  <p className="text-white">{item.nome_cliente}</p>
-                                  <p className="text-sm text-[var(--muted)]">{item.servico_nome || "Servico nao informado"}</p>
-                                </div>
-                                <Badge label={badgeLabel(item)} />
-                              </div>
+                              <p className="text-lg font-semibold">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
+                              <p className="text-white">{item.nome_cliente}</p>
                             </article>
                           ))}
                         </div>
@@ -777,17 +848,15 @@ export default function AdminPage() {
                   </div>
                 </Panel>
 
-                <Panel title="Proximos horarios" subtitle="Agenda mais proxima do dia">
+                <Panel title="Fila do dia" subtitle="Quem ainda precisa da sua atencao">
                   <div className="space-y-3 text-sm">
                     {proximosHorarios.map((item) => (
-                      <div key={item.id} className="rounded-xl border border-white/10 px-3 py-3">
+                      <button key={item.id} type="button" onClick={() => setDataOperacao(item.data)} className="w-full rounded-xl border border-white/10 px-3 py-3 text-left hover:bg-white/5">
                         <p className="text-white">{item.nome_cliente}</p>
                         <p className="text-[var(--muted)]">{formatarHora(item.hora_inicio)} - {item.servico_nome || "Servico nao informado"}</p>
-                      </div>
+                      </button>
                     ))}
-                    {proximosHorarios.length === 0 && (
-                      <p className="text-[var(--muted)]">Nenhum horario ativo agora.</p>
-                    )}
+                    {proximosHorarios.length === 0 && <p className="text-[var(--muted)]">Nenhum horario ativo agora.</p>}
                   </div>
                 </Panel>
               </div>
@@ -795,182 +864,33 @@ export default function AdminPage() {
           </section>
         )}
 
-        {view === "financeiro" && (
-          <section className="space-y-6">
-            <Panel title="Fechamento por periodo" subtitle="Receita prevista, realizada e distribuicao operacional">
-              <div className="flex flex-col md:flex-row gap-3 mb-3">
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-              </div>
-              <div className="grid grid-cols-2 sm:flex gap-2 mb-6">
-                <QuickFilterButton label="Hoje" onClick={() => { setDateFrom(today); setDateTo(today) }} active={dateFrom === today && dateTo === today} />
-                <QuickFilterButton label="7 dias" onClick={() => { setDateFrom(new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)); setDateTo(today) }} />
-              </div>
-
-              <div className="grid md:grid-cols-6 gap-3 mb-6">
-                <MetricCard titulo="Previsto" valor={moeda(metricasFinanceiras.faturamentoPrevisto)} accent />
-                <MetricCard titulo="Realizado" valor={moeda(metricasFinanceiras.faturamentoRealizado)} success />
-                <MetricCard titulo="Ticket medio" valor={moeda(metricasFinanceiras.ticketMedio)} />
-                <MetricCard titulo="Concluidos" valor={String(metricasFinanceiras.realizados)} />
-                <MetricCard titulo="Pagos" valor={String(metricasFinanceiras.pagos)} />
-                <MetricCard titulo="Cancel./No-show" valor={`${metricasFinanceiras.cancelados}/${metricasFinanceiras.noShow}`} />
-              </div>
-
-              <div className="grid xl:grid-cols-2 gap-6">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)] mb-4">Performance por servico</p>
-                  <div className="space-y-3">
-                    {loadingPeriodo && <p className="text-[var(--muted)]">Carregando periodo...</p>}
-                    {metricasFinanceiras.porServico.map((item) => (
-                      <div key={item.nome} className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
-                        <div>
-                          <p className="text-white">{item.nome}</p>
-                          <p className="text-sm text-[var(--muted)]">{item.total} atendimento(s)</p>
-                        </div>
-                        <span className="text-[var(--accent-strong)]">{moeda(item.receita)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)] mb-4">Recebimento por forma de pagamento</p>
-                  <div className="space-y-3">
-                    {loadingPeriodo && <p className="text-[var(--muted)]">Carregando periodo...</p>}
-                    {metricasFinanceiras.porPagamento.length === 0 && <p className="text-[var(--muted)]">Nenhum pagamento baixado no periodo.</p>}
-                    {metricasFinanceiras.porPagamento.map((item) => (
-                      <div key={item.forma} className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
-                        <div>
-                          <p className="text-white capitalize">{item.forma}</p>
-                          <p className="text-sm text-[var(--muted)]">{item.total} pagamento(s)</p>
-                        </div>
-                        <span className="text-emerald-300">{moeda(item.receita)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </Panel>
-          </section>
-        )}
+        {view === "agenda" && <AgendaSection agendaMode={agendaMode} setAgendaMode={setAgendaMode} dataOperacao={dataOperacao} setDataOperacao={setDataOperacao} today={today} semanaBase={semanaBase} setSemanaBase={setSemanaBase} loadingOperacao={loadingOperacao} loadingSemana={loadingSemana} metricasDia={metricasDia} agendamentosDia={agendamentosDia} resumoSemana={resumoSemana} totalSemana={totalSemana} />}
 
         {view === "clientes" && (
-          <section className="space-y-6">
-            <Panel title="Base de clientes" subtitle="Recorrencia, receita e cancelamentos no periodo selecionado">
-              <div className="flex flex-col md:flex-row gap-3 mb-3">
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-              </div>
-              <div className="grid grid-cols-2 sm:flex gap-2 mb-6">
-                <QuickFilterButton label="Hoje" onClick={() => { setDateFrom(today); setDateTo(today) }} active={dateFrom === today && dateTo === today} />
-                <QuickFilterButton label="7 dias" onClick={() => { setDateFrom(new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)); setDateTo(today) }} />
-              </div>
-
-              <div className="grid gap-3">
-                {loadingPeriodo && <p className="text-[var(--muted)]">Carregando clientes...</p>}
-                {metricasClientes.map((cliente) => (
-                  <div key={`${cliente.celular}-${cliente.ultData}`} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <p className="text-white">{cliente.nome}</p>
-                      <p className="text-sm text-[var(--muted)]">{cliente.celular || "Sem telefone"}</p>
-                    </div>
-                    <div className="grid grid-cols-3 md:flex gap-4 text-sm">
-                      <span className="text-[var(--muted)]">Visitas: <strong className="text-white">{cliente.total}</strong></span>
-                      <span className="text-[var(--muted)]">Receita: <strong className="text-[var(--accent-strong)]">{moeda(cliente.receita)}</strong></span>
-                      <span className="text-[var(--muted)]">Cancel.: <strong className="text-white">{cliente.cancelados}</strong></span>
-                    </div>
-                    <span className="text-sm text-[var(--muted)]">Ultima visita {formatarDataBR(cliente.ultData)}</span>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          </section>
+          <Panel title="Clientes" subtitle="Busca rapida e historico do periodo">
+            <div className="mb-3 grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
+              <input type="date" value={clientesDateFrom} onChange={(e) => setClientesDateFrom(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+              <input type="date" value={clientesDateTo} onChange={(e) => setClientesDateTo(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+              <input value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} placeholder="Buscar por nome ou celular" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+            </div>
+            <div className="mb-6 grid grid-cols-3 gap-2">
+              <QuickFilterButton label="Hoje" onClick={() => { setClientesDateFrom(today); setClientesDateTo(today) }} active={clientesDateFrom === today && clientesDateTo === today} />
+              <QuickFilterButton label="7 dias" onClick={() => { setClientesDateFrom(addDays(today, -6)); setClientesDateTo(today) }} />
+              <QuickFilterButton label="30 dias" onClick={() => { setClientesDateFrom(addDays(today, -29)); setClientesDateTo(today) }} />
+            </div>
+            <div className="grid gap-3">
+              {loadingClientes && <p className="text-[var(--muted)]">Carregando clientes...</p>}
+              {!loadingClientes && clientesFiltrados.length === 0 && <p className="text-[var(--muted)]">Nenhum cliente encontrado.</p>}
+              {clientesFiltrados.map((cliente) => <ClienteCard key={`${cliente.celular}-${cliente.ultData}`} cliente={cliente} />)}
+            </div>
+          </Panel>
         )}
 
-        {view === "bloqueios" && (
-          <section className="grid xl:grid-cols-[0.9fr_1.1fr] gap-6">
-            <Panel title="Criar bloqueio" subtitle="Controle de disponibilidade do barbeiro">
-              <form onSubmit={criarBloqueio} className="grid gap-4">
-                <input name="data" type="date" value={dataBloqueio} onChange={(e) => setDataBloqueio(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                <div className="grid gap-2">
-                  {(["horario", "dia_inteiro", "nao_aceitar_mais"] as Bloqueio["tipo_bloqueio"][]).map((tipo) => (
-                    <label key={tipo} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 flex items-center gap-3">
-                      <input type="radio" checked={tipoNovoBloqueio === tipo} onChange={() => setTipoNovoBloqueio(tipo)} />
-                      <span>{tipo === "horario" ? "Bloquear horario especifico" : tipo === "dia_inteiro" ? "Bloquear dia inteiro" : "Nao aceitar mais horarios"}</span>
-                    </label>
-                  ))}
-                </div>
-                {tipoNovoBloqueio === "horario" && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <input name="hora_inicio" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                    <input name="hora_fim" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                  </div>
-                )}
-                <input name="motivo" type="text" placeholder="Motivo do bloqueio" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
-                <button type="submit" className="rounded-xl bg-[var(--accent)] text-black px-4 py-3 font-medium">Criar bloqueio</button>
-              </form>
-            </Panel>
+        {view === "financeiro" && <FinanceSection today={today} financeDateFrom={financeDateFrom} financeDateTo={financeDateTo} setFinanceDateFrom={setFinanceDateFrom} setFinanceDateTo={setFinanceDateTo} loadingFinanceiro={loadingFinanceiro} metricasFinanceiras={metricasFinanceiras} />}
 
-            <Panel title="Agenda de bloqueios" subtitle="Historico e disponibilidade recente">
-              <div className="space-y-4">
-                {[...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].map((bloqueio) => (
-                  <div key={bloqueio.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 flex justify-between gap-4">
-                    <div>
-                      <p className="text-white">{formatarDataBR(bloqueio.data)}</p>
-                      <p className="text-sm text-[var(--muted)]">
-                        {bloqueio.tipo_bloqueio === "horario"
-                          ? `${formatarHora(bloqueio.hora_inicio || "00:00")} - ${formatarHora(bloqueio.hora_fim || "23:59")}`
-                          : bloqueio.tipo_bloqueio === "dia_inteiro"
-                            ? "Dia inteiro"
-                            : "Nao aceitar mais horarios"}
-                      </p>
-                      {bloqueio.motivo && <p className="text-sm text-zinc-300 mt-1">{bloqueio.motivo}</p>}
-                    </div>
-                    <button onClick={() => deletarBloqueio(bloqueio.id)} className="text-red-300 text-sm">Remover</button>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          </section>
-        )}
+        {view === "mais" && <MaisSection today={today} dataBloqueio={dataBloqueio} setDataBloqueio={setDataBloqueio} tipoNovoBloqueio={tipoNovoBloqueio} setTipoNovoBloqueio={setTipoNovoBloqueio} criarBloqueio={criarBloqueio} bloqueios={bloqueios} todosBloqueios={todosBloqueios} deletarBloqueio={deletarBloqueio} dataHorarios={dataHorarios} setDataHorarios={setDataHorarios} criarHorario={criarHorario} horarios={horarios} deletarHorario={deletarHorario} />}
 
-        {view === "horarios" && (
-          <section className="grid xl:grid-cols-[0.9fr_1.1fr] gap-6">
-            <Panel title="Horario personalizado" subtitle="Cadastro manual de compromissos fora do fluxo do site">
-              <form onSubmit={criarHorario} className="grid gap-4">
-                <p className="text-sm text-[var(--muted)]">
-                  O horario personalizado e livre: pode ser cadastrado em qualquer hora, mesmo fora do expediente. So bloqueamos conflito com outro atendimento ja existente.
-                </p>
-                <input name="data-horario" type="date" value={dataHorarios} onChange={(e) => setDataHorarios(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                <input name="nome_cliente" type="text" placeholder="Nome do cliente" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
-                <input name="celular_cliente" type="text" placeholder="Celular do cliente" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
-                <div className="grid grid-cols-2 gap-3">
-                  <input name="hora_inicio" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                  <input name="hora_fim" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
-                </div>
-                <button type="submit" className="rounded-xl bg-emerald-500 text-black px-4 py-3 font-medium">Salvar horario</button>
-              </form>
-            </Panel>
-
-            <Panel title="Horarios personalizados" subtitle={`Itens de ${formatarDataBR(dataHorarios)}`}>
-              <div className="space-y-4">
-                {horarios.length === 0 && <p className="text-[var(--muted)]">Nenhum horario personalizado cadastrado.</p>}
-                {horarios.map((horario) => (
-                  <div key={horario.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 flex justify-between gap-4">
-                    <div>
-                      <p className="text-white">{formatarHora(horario.hora_inicio)} - {formatarHora(horario.hora_fim)}</p>
-                      <p className="text-sm text-zinc-300">{horario.nome_cliente || "Sem nome"}</p>
-                      {horario.celular_cliente && <p className="text-sm text-[var(--muted)]">{horario.celular_cliente}</p>}
-                    </div>
-                    <button onClick={() => deletarHorario(horario.id)} className="text-red-300 text-sm">Remover</button>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          </section>
-        )}
-
-        <nav className="md:hidden fixed bottom-3 left-3 right-3 z-30 rounded-[26px] border border-white/10 bg-[rgba(10,10,10,0.96)] backdrop-blur-xl p-2">
+        <nav className="fixed bottom-3 left-3 right-3 z-30 rounded-[26px] border border-white/10 bg-[rgba(10,10,10,0.96)] p-2 backdrop-blur-xl md:hidden">
           <div className="grid grid-cols-5 gap-2">
             {NAV_ITEMS.map((item) => (
               <button
@@ -980,11 +900,7 @@ export default function AdminPage() {
                   setErro(null)
                   setMensagem(null)
                 }}
-                className={`rounded-2xl px-2 py-3 text-[11px] transition ${
-                  view === item.id
-                    ? "bg-[var(--accent)] text-black font-semibold"
-                    : "bg-white/5 text-white/85"
-                }`}
+                className={`rounded-2xl px-2 py-3 text-[11px] transition ${view === item.id ? "bg-[var(--accent)] font-semibold text-black" : "bg-white/5 text-white/85"}`}
               >
                 {item.shortLabel}
               </button>
@@ -999,8 +915,8 @@ export default function AdminPage() {
 function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <section className="rounded-[28px] border border-[var(--line)] bg-[rgba(18,18,18,0.92)] p-4 sm:p-6">
-      <p className="text-xs uppercase tracking-[0.28em] text-[var(--muted)] mb-2">{subtitle}</p>
-      <h2 className="text-xl sm:text-2xl font-semibold mb-5 sm:mb-6">{title}</h2>
+      <p className="mb-2 text-xs uppercase tracking-[0.28em] text-[var(--muted)]">{subtitle}</p>
+      <h2 className="mb-5 text-xl font-semibold sm:mb-6 sm:text-2xl">{title}</h2>
       {children}
     </section>
   )
@@ -1010,14 +926,23 @@ function MetricCard({ titulo, valor, accent, success }: { titulo: string; valor:
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{titulo}</p>
-      <p className={`text-xl font-semibold mt-2 ${success ? "text-emerald-300" : accent ? "text-[var(--accent-strong)]" : "text-white"}`}>{valor}</p>
+      <p className={`mt-2 text-xl font-semibold ${success ? "text-emerald-300" : accent ? "text-[var(--accent-strong)]" : "text-white"}`}>{valor}</p>
+    </div>
+  )
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-white">{value}</p>
     </div>
   )
 }
 
 function QuickAction({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
   return (
-    <button onClick={onClick} className={`rounded-2xl px-4 py-3 text-sm text-center transition min-h-12 ${danger ? "border border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20" : "border border-white/10 bg-white/5 hover:bg-white/10"}`}>
+    <button onClick={onClick} className={`min-h-12 rounded-2xl px-4 py-3 text-center text-sm transition ${danger ? "border border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20" : "border border-white/10 bg-white/5 hover:bg-white/10"}`}>
       {label}
     </button>
   )
@@ -1035,7 +960,7 @@ function InfoRow({ label, value, accent, success }: { label: string; value: stri
   return (
     <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
       <span className="text-[var(--muted)]">{label}</span>
-      <span className={`${success ? "text-emerald-300" : accent ? "text-[var(--accent-strong)]" : "text-white"}`}>{value}</span>
+      <span className={success ? "text-emerald-300" : accent ? "text-[var(--accent-strong)]" : "text-white"}>{value}</span>
     </div>
   )
 }
@@ -1043,7 +968,7 @@ function InfoRow({ label, value, accent, success }: { label: string; value: stri
 function InputMoney({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="text-sm">
-      <span className="block text-[var(--muted)] mb-1">{label}</span>
+      <span className="mb-1 block text-[var(--muted)]">{label}</span>
       <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="decimal" className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2" />
     </label>
   )
@@ -1051,68 +976,402 @@ function InputMoney({ label, value, onChange }: { label: string; value: string; 
 
 function QuickFilterButton({ label, onClick, active }: { label: string; onClick: () => void; active?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-2xl px-3 py-3 text-sm transition ${active ? "bg-[var(--accent)] text-black font-semibold" : "border border-white/10 bg-white/5 text-white/85 hover:bg-white/10"}`}
-    >
+    <button type="button" onClick={onClick} className={`rounded-2xl px-3 py-3 text-sm transition ${active ? "bg-[var(--accent)] font-semibold text-black" : "border border-white/10 bg-white/5 text-white/85 hover:bg-white/10"}`}>
       {label}
     </button>
   )
 }
 
-function SpotlightCard({
-  label,
-  emptyLabel,
-  item,
-}: {
-  label: string
-  emptyLabel: string
-  item: Agendamento | null
-}) {
+function SpotlightCard({ label, emptyLabel, item }: { label: string; emptyLabel: string; item: Agendamento | null }) {
   const whatsappHref = normalizePhoneLink(item?.celular_cliente)
 
   return (
     <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)] mb-3">{label}</p>
+      <p className="mb-3 text-xs uppercase tracking-[0.2em] text-[var(--muted)]">{label}</p>
       {!item && <p className="text-white/80">{emptyLabel}</p>}
       {item && (
         <>
           <p className="text-2xl font-semibold">{formatarHora(item.hora_inicio)}</p>
-          <p className="text-white mt-2">{item.nome_cliente}</p>
+          <p className="mt-2 text-white">{item.nome_cliente}</p>
           <p className="text-sm text-[var(--muted)]">{item.servico_nome || "Servico nao informado"}</p>
-          {whatsappHref && (
-            <a href={whatsappHref} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm text-emerald-200 hover:bg-emerald-500/30">
-              Abrir WhatsApp
-            </a>
-          )}
+          {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm text-emerald-200 hover:bg-emerald-500/30">Abrir WhatsApp</a>}
         </>
       )}
     </div>
   )
 }
 
-function CollapsibleCard({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string
-  subtitle?: string
-  children: React.ReactNode
-}) {
+function CollapsibleCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <summary className="cursor-pointer list-none">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-white">{title}</p>
-            {subtitle && <p className="text-xs text-[var(--muted)] mt-1">{subtitle}</p>}
+            {subtitle && <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p>}
           </div>
           <span className="text-xs text-[var(--muted)]">Abrir</span>
         </div>
       </summary>
       <div className="mt-4">{children}</div>
     </details>
+  )
+}
+
+function MoreActionCard({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="rounded-3xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10">
+      <p className="text-lg font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">{description}</p>
+    </button>
+  )
+}
+
+function ClienteCard({
+  cliente,
+}: {
+  cliente: { celular: string; nome: string; total: number; receita: number; cancelados: number; ultData: string }
+}) {
+  const whatsappHref = normalizePhoneLink(cliente.celular)
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-white">{cliente.nome}</p>
+          <p className="text-sm text-[var(--muted)]">{cliente.celular || "Sem telefone"}</p>
+        </div>
+        <span className="text-sm text-[var(--muted)]">Ultima visita {formatarDataBR(cliente.ultData)}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+        <span className="text-[var(--muted)]">Visitas <strong className="text-white">{cliente.total}</strong></span>
+        <span className="text-[var(--muted)]">Receita <strong className="text-[var(--accent-strong)]">{moeda(cliente.receita)}</strong></span>
+        <span className="text-[var(--muted)]">Cancel. <strong className="text-white">{cliente.cancelados}</strong></span>
+      </div>
+      {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm text-emerald-200 hover:bg-emerald-500/30">Conversar no WhatsApp</a>}
+    </div>
+  )
+}
+
+function AgendaSection({
+  agendaMode,
+  setAgendaMode,
+  dataOperacao,
+  setDataOperacao,
+  today,
+  semanaBase,
+  setSemanaBase,
+  loadingOperacao,
+  loadingSemana,
+  metricasDia,
+  agendamentosDia,
+  resumoSemana,
+  totalSemana,
+}: {
+  agendaMode: AgendaMode
+  setAgendaMode: (value: AgendaMode) => void
+  dataOperacao: string
+  setDataOperacao: (value: string) => void
+  today: string
+  semanaBase: string
+  setSemanaBase: (value: string) => void
+  loadingOperacao: boolean
+  loadingSemana: boolean
+  metricasDia: { agendados: number; personalizados: number; receitaPrevista: number; pendenciasPagamento: number }
+  agendamentosDia: Agendamento[]
+  resumoSemana: { data: string; ativos: Agendamento[]; receita: number; personalizados: number }[]
+  totalSemana: { atendimentos: number; personalizados: number; receita: number }
+}) {
+  return (
+    <section className="space-y-6">
+      <Panel title="Agenda" subtitle="Visao ampla do dia e da semana">
+        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+          <div className="grid grid-cols-2 gap-2">
+            <QuickFilterButton label="Dia" onClick={() => setAgendaMode("dia")} active={agendaMode === "dia"} />
+            <QuickFilterButton label="Semana" onClick={() => setAgendaMode("semana")} active={agendaMode === "semana"} />
+          </div>
+          {agendaMode === "dia" ? (
+            <div className="grid grid-cols-3 gap-2">
+              <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
+              <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(addDays(today, 1))} />
+              <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input rounded-2xl border border-white/10 px-4 py-3" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <QuickFilterButton label="Atual" onClick={() => setSemanaBase(getStartOfWeek(today))} active={semanaBase === getStartOfWeek(today)} />
+              <QuickFilterButton label="Anterior" onClick={() => setSemanaBase(addDays(semanaBase, -7))} />
+              <QuickFilterButton label="Proxima" onClick={() => setSemanaBase(addDays(semanaBase, 7))} />
+            </div>
+          )}
+        </div>
+      </Panel>
+
+      {agendaMode === "dia" && (
+        <Panel title={`Dia ${formatarDataBR(dataOperacao)}`} subtitle="Leitura rapida para operacao mobile">
+          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MetricCard titulo="Atendimentos" valor={String(metricasDia.agendados)} />
+            <MetricCard titulo="Manuais" valor={String(metricasDia.personalizados)} />
+            <MetricCard titulo="Previsto" valor={moeda(metricasDia.receitaPrevista)} accent />
+            <MetricCard titulo="Pagto pend." valor={String(metricasDia.pendenciasPagamento)} />
+          </div>
+          <div className="space-y-3">
+            {loadingOperacao && <p className="text-[var(--muted)]">Carregando agenda...</p>}
+            {!loadingOperacao && agendamentosDia.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-white">{formatarHora(item.hora_inicio)} - {formatarHora(item.hora_fim)}</p>
+                    <p className="text-sm text-[var(--muted)]">{item.nome_cliente}</p>
+                  </div>
+                  <Badge label={badgeLabel(item)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {agendaMode === "semana" && (
+        <section className="space-y-6">
+          <Panel title="Resumo semanal" subtitle={`${formatarDataBR(semanaBase)} ate ${formatarDataBR(addDays(semanaBase, 6))}`}>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <MetricCard titulo="Atendimentos" valor={String(totalSemana.atendimentos)} />
+              <MetricCard titulo="Manuais" valor={String(totalSemana.personalizados)} />
+              <MetricCard titulo="Receita prevista" valor={moeda(totalSemana.receita)} accent />
+              <MetricCard titulo="Dias cheios" valor={String(resumoSemana.filter((dia) => dia.ativos.length >= 6).length)} />
+            </div>
+          </Panel>
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {loadingSemana && <p className="text-[var(--muted)]">Carregando semana...</p>}
+            {!loadingSemana && resumoSemana.map((dia) => (
+              <article key={dia.data} className="rounded-[28px] border border-white/10 bg-[rgba(18,18,18,0.92)] p-4">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">{formatWeekday(dia.data)}</p>
+                    <h3 className="mt-2 text-xl font-semibold">{formatarDataBR(dia.data)}</h3>
+                  </div>
+                  <button type="button" onClick={() => { setDataOperacao(dia.data); setAgendaMode("dia") }} className="rounded-full border border-white/10 px-3 py-2 text-xs text-white/80 hover:bg-white/5">
+                    Ver dia
+                  </button>
+                </div>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <MiniStat label="Agenda" value={String(dia.ativos.filter((item) => item.origem !== "horario_customizado").length)} />
+                  <MiniStat label="Manual" value={String(dia.personalizados)} />
+                  <MiniStat label="Prev." value={moeda(dia.receita)} />
+                </div>
+                <div className="space-y-2">
+                  {dia.ativos.slice(0, 4).map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                      <p className="text-white">{formatarHora(item.hora_inicio)} - {item.nome_cliente}</p>
+                      <p className="text-sm text-[var(--muted)]">{item.servico_nome || "Servico nao informado"}</p>
+                    </div>
+                  ))}
+                  {dia.ativos.length === 0 && <p className="text-sm text-[var(--muted)]">Sem horarios cadastrados.</p>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </section>
+  )
+}
+
+function FinanceSection({
+  today,
+  financeDateFrom,
+  financeDateTo,
+  setFinanceDateFrom,
+  setFinanceDateTo,
+  loadingFinanceiro,
+  metricasFinanceiras,
+}: {
+  today: string
+  financeDateFrom: string
+  financeDateTo: string
+  setFinanceDateFrom: (value: string) => void
+  setFinanceDateTo: (value: string) => void
+  loadingFinanceiro: boolean
+  metricasFinanceiras: {
+    faturamentoPrevisto: number
+    faturamentoRealizado: number
+    ticketMedio: number
+    realizados: number
+    pagos: number
+    cancelados: number
+    noShow: number
+    porServico: { nome: string; total: number; receita: number }[]
+    porPagamento: { forma: string; total: number; receita: number }[]
+  }
+}) {
+  return (
+    <Panel title="Financeiro" subtitle="Fechamento rapido do periodo selecionado">
+      <div className="mb-3 flex flex-col gap-3 md:flex-row">
+        <input type="date" value={financeDateFrom} onChange={(e) => setFinanceDateFrom(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+        <input type="date" value={financeDateTo} onChange={(e) => setFinanceDateTo(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+      </div>
+      <div className="mb-6 grid grid-cols-3 gap-2">
+        <QuickFilterButton label="Hoje" onClick={() => { setFinanceDateFrom(today); setFinanceDateTo(today) }} active={financeDateFrom === today && financeDateTo === today} />
+        <QuickFilterButton label="Semana" onClick={() => { setFinanceDateFrom(addDays(today, -6)); setFinanceDateTo(today) }} />
+        <QuickFilterButton label="Mes" onClick={() => { setFinanceDateFrom(addDays(today, -29)); setFinanceDateTo(today) }} />
+      </div>
+      <div className="mb-6 grid gap-3 md:grid-cols-6">
+        <MetricCard titulo="Previsto" valor={moeda(metricasFinanceiras.faturamentoPrevisto)} accent />
+        <MetricCard titulo="Realizado" valor={moeda(metricasFinanceiras.faturamentoRealizado)} success />
+        <MetricCard titulo="Ticket medio" valor={moeda(metricasFinanceiras.ticketMedio)} />
+        <MetricCard titulo="Concluidos" valor={String(metricasFinanceiras.realizados)} />
+        <MetricCard titulo="Pagos" valor={String(metricasFinanceiras.pagos)} />
+        <MetricCard titulo="Cancel./No-show" valor={`${metricasFinanceiras.cancelados}/${metricasFinanceiras.noShow}`} />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <p className="mb-4 text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Performance por servico</p>
+          <div className="space-y-3">
+            {loadingFinanceiro && <p className="text-[var(--muted)]">Carregando periodo...</p>}
+            {metricasFinanceiras.porServico.map((item) => (
+              <div key={item.nome} className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
+                <div>
+                  <p className="text-white">{item.nome}</p>
+                  <p className="text-sm text-[var(--muted)]">{item.total} atendimento(s)</p>
+                </div>
+                <span className="text-[var(--accent-strong)]">{moeda(item.receita)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <p className="mb-4 text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Recebimento por forma de pagamento</p>
+          <div className="space-y-3">
+            {loadingFinanceiro && <p className="text-[var(--muted)]">Carregando periodo...</p>}
+            {metricasFinanceiras.porPagamento.length === 0 && <p className="text-[var(--muted)]">Nenhum pagamento baixado no periodo.</p>}
+            {metricasFinanceiras.porPagamento.map((item) => (
+              <div key={item.forma} className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
+                <div>
+                  <p className="text-white capitalize">{item.forma}</p>
+                  <p className="text-sm text-[var(--muted)]">{item.total} pagamento(s)</p>
+                </div>
+                <span className="text-emerald-300">{moeda(item.receita)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+function MaisSection({
+  today,
+  dataBloqueio,
+  setDataBloqueio,
+  tipoNovoBloqueio,
+  setTipoNovoBloqueio,
+  criarBloqueio,
+  bloqueios,
+  todosBloqueios,
+  deletarBloqueio,
+  dataHorarios,
+  setDataHorarios,
+  criarHorario,
+  horarios,
+  deletarHorario,
+}: {
+  today: string
+  dataBloqueio: string
+  setDataBloqueio: (value: string) => void
+  tipoNovoBloqueio: Bloqueio["tipo_bloqueio"]
+  setTipoNovoBloqueio: (value: Bloqueio["tipo_bloqueio"]) => void
+  criarBloqueio: (e: React.FormEvent<HTMLFormElement>) => Promise<void>
+  bloqueios: Bloqueio[]
+  todosBloqueios: Bloqueio[]
+  deletarBloqueio: (id: string) => Promise<void>
+  dataHorarios: string
+  setDataHorarios: (value: string) => void
+  criarHorario: (e: React.FormEvent<HTMLFormElement>) => Promise<void>
+  horarios: HorarioCustomizado[]
+  deletarHorario: (id: string) => Promise<void>
+}) {
+  return (
+    <section className="space-y-6">
+      <Panel title="Mais funcoes" subtitle="Acoes administrativas menos frequentes">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MoreActionCard title="Bloquear horario" description="Impede novos agendamentos em um intervalo." onClick={() => { setDataBloqueio(today); setTipoNovoBloqueio("horario") }} />
+          <MoreActionCard title="Bloquear dia" description="Fecha a agenda inteira para um dia." onClick={() => { setDataBloqueio(today); setTipoNovoBloqueio("dia_inteiro") }} />
+          <MoreActionCard title="Nao aceitar mais" description="Trava o restante do dia sem cancelar o que ja existe." onClick={() => { setDataBloqueio(today); setTipoNovoBloqueio("nao_aceitar_mais") }} />
+          <MoreActionCard title="Horario manual" description="Cadastra um compromisso fora do fluxo do site." onClick={() => setDataHorarios(today)} />
+        </div>
+      </Panel>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <Panel title="Bloqueios" subtitle="Controle de disponibilidade do barbeiro">
+          <form onSubmit={criarBloqueio} className="grid gap-4">
+            <input name="data" type="date" value={dataBloqueio} onChange={(e) => setDataBloqueio(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+            <div className="grid gap-2">
+              {(["horario", "dia_inteiro", "nao_aceitar_mais"] as Bloqueio["tipo_bloqueio"][]).map((tipo) => (
+                <label key={tipo} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <input type="radio" checked={tipoNovoBloqueio === tipo} onChange={() => setTipoNovoBloqueio(tipo)} />
+                  <span>{tipo === "horario" ? "Bloquear horario especifico" : tipo === "dia_inteiro" ? "Bloquear dia inteiro" : "Nao aceitar mais horarios"}</span>
+                </label>
+              ))}
+            </div>
+            {tipoNovoBloqueio === "horario" && (
+              <div className="grid grid-cols-2 gap-3">
+                <input name="hora_inicio" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+                <input name="hora_fim" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+              </div>
+            )}
+            <input name="motivo" type="text" placeholder="Motivo do bloqueio" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+            <button type="submit" className="rounded-xl bg-[var(--accent)] px-4 py-3 font-medium text-black">Criar bloqueio</button>
+          </form>
+
+          <div className="mt-6 space-y-4">
+            {[...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].map((bloqueio) => (
+              <div key={bloqueio.id} className="flex justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+                <div>
+                  <p className="text-white">{formatarDataBR(bloqueio.data)}</p>
+                  <p className="text-sm text-[var(--muted)]">
+                    {bloqueio.tipo_bloqueio === "horario"
+                      ? `${formatarHora(bloqueio.hora_inicio || "00:00")} - ${formatarHora(bloqueio.hora_fim || "23:59")}`
+                      : bloqueio.tipo_bloqueio === "dia_inteiro"
+                        ? "Dia inteiro"
+                        : "Nao aceitar mais horarios"}
+                  </p>
+                  {bloqueio.motivo && <p className="mt-1 text-sm text-zinc-300">{bloqueio.motivo}</p>}
+                </div>
+                <button onClick={() => deletarBloqueio(bloqueio.id)} className="text-sm text-red-300">Remover</button>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Horario manual" subtitle="Cadastro rapido fora do fluxo do site">
+          <form onSubmit={criarHorario} className="grid gap-4">
+            <p className="text-sm text-[var(--muted)]">Pode ser cadastrado em qualquer hora, mesmo fora do expediente. O sistema so bloqueia conflito com outro atendimento existente.</p>
+            <input name="data-horario" type="date" value={dataHorarios} onChange={(e) => setDataHorarios(e.target.value)} className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+            <input name="nome_cliente" type="text" placeholder="Nome do cliente" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+            <input name="celular_cliente" type="text" placeholder="Celular do cliente" className="rounded-xl border border-white/10 bg-black/20 px-4 py-2" />
+            <div className="grid grid-cols-2 gap-3">
+              <input name="hora_inicio" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+              <input name="hora_fim" type="time" className="datetime-input rounded-xl border border-white/10 px-4 py-2" />
+            </div>
+            <button type="submit" className="rounded-xl bg-emerald-500 px-4 py-3 font-medium text-black">Salvar horario</button>
+          </form>
+
+          <div className="mt-6 space-y-4">
+            {horarios.length === 0 && <p className="text-[var(--muted)]">Nenhum horario personalizado cadastrado.</p>}
+            {horarios.map((horario) => (
+              <div key={horario.id} className="flex justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+                <div>
+                  <p className="text-white">{formatarHora(horario.hora_inicio)} - {formatarHora(horario.hora_fim)}</p>
+                  <p className="text-sm text-zinc-300">{horario.nome_cliente || "Sem nome"}</p>
+                  {horario.celular_cliente && <p className="text-sm text-[var(--muted)]">{horario.celular_cliente}</p>}
+                </div>
+                <button onClick={() => deletarHorario(horario.id)} className="text-sm text-red-300">Remover</button>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+    </section>
   )
 }
