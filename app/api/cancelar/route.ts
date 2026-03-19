@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { ADMIN_SESSION_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/admin-session"
 import { normalizePhone } from "@/lib/phone"
+import { canCancelAppointment } from "@/lib/agendamento-rules"
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
 
     const { data: agendamento, error: loadError } = await supabase
       .from("agendamentos")
-      .select("id, celular_cliente")
+      .select("id, celular_cliente, data, hora_inicio, hora_fim, status, status_agendamento, status_atendimento, status_pagamento, origem_agendamento")
       .eq("id", id)
       .maybeSingle()
 
@@ -60,6 +61,13 @@ export async function POST(req: Request) {
           { status: 403 }
         )
       }
+    }
+
+    if (!canCancelAppointment(agendamento)) {
+      return NextResponse.json(
+        { erro: "Este agendamento nao pode mais ser cancelado porque o horario ja comecou ou ele ja foi finalizado." },
+        { status: 409 }
+      )
     }
 
     const { error } = await supabase

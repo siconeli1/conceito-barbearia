@@ -22,6 +22,10 @@ interface Agendamento {
   status_pagamento?: "pendente" | "pago" | "estornado"
 }
 
+type AgendamentoComEstado = Agendamento & {
+  passouDoHorario: boolean
+}
+
 interface SearchResponse {
   agendamentos?: Agendamento[]
   erro?: string
@@ -64,6 +68,32 @@ function formReducer(state: FormState, action: FormAction): FormState {
   }
 }
 
+function getCurrentDateTimeInSaoPaulo(referenceDate = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(referenceDate)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value])
+  ) as Record<string, string>
+
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    minutes: Number(values.hour) * 60 + Number(values.minute),
+  }
+}
+
+function timeToMinutes(hora: string) {
+  const [h, m] = String(hora).slice(0, 5).split(":").map(Number)
+  return h * 60 + m
+}
+
 export default function MeusAgendamentosPage() {
   return (
     <Suspense fallback={<main className="min-h-screen bg-black text-white flex items-center justify-center">Carregando...</main>}>
@@ -90,8 +120,29 @@ function MeusAgendamentosContent() {
     }
   }, [searchParams])
 
-  const agendamentosAtivos = form.agendamentos.filter((item) => item.status_agendamento !== "cancelado" && item.status !== "cancelado")
-  const agendamentosCancelados = form.agendamentos.filter((item) => item.status_agendamento === "cancelado" || item.status === "cancelado")
+  const agoraSaoPaulo = getCurrentDateTimeInSaoPaulo()
+
+  function horarioJaPassou(agendamento: Agendamento) {
+    if (agendamento.data < agoraSaoPaulo.date) return true
+    if (agendamento.data > agoraSaoPaulo.date) return false
+    return timeToMinutes(agendamento.hora_inicio) <= agoraSaoPaulo.minutes
+  }
+
+  function podeCancelar(agendamento: Agendamento) {
+    if (agendamento.status_agendamento === "cancelado" || agendamento.status === "cancelado") return false
+    if (agendamento.status_agendamento === "no_show") return false
+    if (agendamento.status_atendimento === "concluido") return false
+    if (horarioJaPassou(agendamento)) return false
+    return true
+  }
+
+  const agendamentosComEstado: AgendamentoComEstado[] = form.agendamentos.map((item) => ({
+    ...item,
+    passouDoHorario: horarioJaPassou(item),
+  }))
+
+  const agendamentosAtivos = agendamentosComEstado.filter((item) => podeCancelar(item))
+  const agendamentosHistorico = agendamentosComEstado.filter((item) => !podeCancelar(item))
 
   function formatarPreco(valor?: number) {
     return Number(valor ?? 0).toLocaleString("pt-BR", {
@@ -100,11 +151,12 @@ function MeusAgendamentosContent() {
     })
   }
 
-  function getStatusLabel(agendamento: Agendamento) {
+  function getStatusLabel(agendamento: AgendamentoComEstado) {
     if (agendamento.status_agendamento === "cancelado" || agendamento.status === "cancelado") return "Cancelado"
     if (agendamento.status_agendamento === "no_show") return "Nao compareceu"
     if (agendamento.status_pagamento === "pago") return "Pago"
     if (agendamento.status_atendimento === "concluido") return "Concluido"
+    if (agendamento.passouDoHorario) return "Horario encerrado"
     if (agendamento.status_atendimento === "em_atendimento") return "Em atendimento"
     if (agendamento.status_agendamento === "confirmado") return "Confirmado"
     return "Agendado"
@@ -231,7 +283,7 @@ function MeusAgendamentosContent() {
         {agendamentosAtivos.length > 0 && (
           <section className="mb-12">
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Agendamentos Ativos ({agendamentosAtivos.length})
+              Proximos Agendamentos ({agendamentosAtivos.length})
             </h2>
             <div className="space-y-4">
               {agendamentosAtivos.map((agendamento) => (
@@ -277,13 +329,13 @@ function MeusAgendamentosContent() {
           </section>
         )}
 
-        {agendamentosCancelados.length > 0 && (
+        {agendamentosHistorico.length > 0 && (
           <section>
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Historico ({agendamentosCancelados.length})
+              Historico ({agendamentosHistorico.length})
             </h2>
             <div className="space-y-4">
-              {agendamentosCancelados.map((agendamento) => (
+              {agendamentosHistorico.map((agendamento) => (
                 <div key={agendamento.id} className="p-6 border border-white/10 rounded opacity-70">
                   <div className="flex justify-between gap-4">
                     <div>

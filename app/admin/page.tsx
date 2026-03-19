@@ -126,6 +126,27 @@ function getCurrentMinutesInSaoPaulo(referenceDate = new Date()) {
   return Number(values.hour) * 60 + Number(values.minute)
 }
 
+function getCurrentDateTimeInSaoPaulo(referenceDate = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(referenceDate)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value])
+  ) as Record<string, string>
+
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    minutes: Number(values.hour) * 60 + Number(values.minute),
+  }
+}
+
 async function lerRespostaJson(res: Response) {
   const contentType = res.headers.get("content-type") || ""
   const body = await res.text()
@@ -494,6 +515,7 @@ export default function AdminPage() {
     [dataOperacao, minutosAtuais, operacaoAtiva, today]
   )
   const proximoHorario = proximosHorarios[0] ?? null
+  const agoraSaoPaulo = getCurrentDateTimeInSaoPaulo()
   const clientesPendentesHoje = operacaoAtiva.filter(
     (item) =>
       item.origem !== "horario_customizado" &&
@@ -568,6 +590,22 @@ export default function AdminPage() {
     ])
   }
 
+  async function confirmarCancelamento(item: Agendamento) {
+    const nomeServico = item.servico_nome || "servico nao informado"
+    const confirmou = confirm(
+      `Deseja mesmo cancelar o corte de ${item.nome_cliente} (${nomeServico}) em ${formatarDataBR(item.data)} as ${formatarHora(item.hora_inicio)}?`
+    )
+
+    if (!confirmou) return
+
+    if (item.origem === "horario_customizado") {
+      await deletarHorario(item.id)
+      return
+    }
+
+    await atualizarAgendamento(item.id, { status_agendamento: "cancelado" })
+  }
+
   async function atualizarAgendamento(id: string, patch: Record<string, string | number | null>) {
     setErro(null)
     setMensagem(null)
@@ -584,6 +622,41 @@ export default function AdminPage() {
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao atualizar agendamento.")
     }
+  }
+
+  function podeConcluirAgora(item: Agendamento) {
+    if (!canConclude(item)) return false
+    if (item.data < agoraSaoPaulo.date) return true
+    if (item.data > agoraSaoPaulo.date) return false
+    return timeToMinutes(item.hora_inicio) <= agoraSaoPaulo.minutes
+  }
+
+  function podeMarcarFaltaAgora(item: Agendamento) {
+    if (!canNoShow(item)) return false
+    if (item.data < agoraSaoPaulo.date) return true
+    if (item.data > agoraSaoPaulo.date) return false
+    return timeToMinutes(item.hora_inicio) <= agoraSaoPaulo.minutes
+  }
+
+  async function concluirAtendimento(item: Agendamento) {
+    if (!podeConcluirAgora(item)) {
+      setErro(`O atendimento de ${item.nome_cliente} so pode ser concluido apos ${formatarHora(item.hora_inicio)}.`)
+      return
+    }
+
+    await atualizarAgendamento(item.id, {
+      status_atendimento: "concluido",
+      status_pagamento: "pago",
+    })
+  }
+
+  async function marcarFalta(item: Agendamento) {
+    if (!podeMarcarFaltaAgora(item)) {
+      setErro(`So e possivel marcar falta para ${item.nome_cliente} apos ${formatarHora(item.hora_inicio)}.`)
+      return
+    }
+
+    await atualizarAgendamento(item.id, { status_agendamento: "no_show" })
   }
 
   async function salvarFinanceiro(item: Agendamento) {
@@ -792,13 +865,11 @@ export default function AdminPage() {
               setExpandedId={setMobileExpandedId}
               loadingOperacao={loadingOperacao}
               loadingSemana={loadingSemana}
-              onCancelar={(item) =>
-                item.origem === "horario_customizado"
-                  ? deletarHorario(item.id)
-                  : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })
-              }
-              onConcluir={(item) => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })}
-              onNoShow={(item) => atualizarAgendamento(item.id, { status_agendamento: "no_show" })}
+              canConcludeNow={podeConcluirAgora}
+              canNoShowNow={podeMarcarFaltaAgora}
+              onCancelar={confirmarCancelamento}
+              onConcluir={concluirAtendimento}
+              onNoShow={marcarFalta}
             />
           )}
 
@@ -933,9 +1004,9 @@ export default function AdminPage() {
                           <p className="mt-2 text-sm text-zinc-200">{item.servico_nome || "Servico nao informado"}</p>
                           <div className="mt-4 grid grid-cols-2 gap-2">
                             {whatsappHref ? <a href={whatsappHref} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200 hover:bg-emerald-500/30">WhatsApp</a> : <div />}
-                            {canConclude(item) && <QuickAction label="Concluir" onClick={() => atualizarAgendamento(item.id, { status_atendimento: "concluido", status_pagamento: "pago" })} />}
-                            {canNoShow(item) && <QuickAction label="No-show" onClick={() => atualizarAgendamento(item.id, { status_agendamento: "no_show" })} />}
-                            {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => item.origem === "horario_customizado" ? deletarHorario(item.id) : atualizarAgendamento(item.id, { status_agendamento: "cancelado" })} />}
+                            {podeConcluirAgora(item) && <QuickAction label="Concluir" onClick={() => concluirAtendimento(item)} />}
+                            {podeMarcarFaltaAgora(item) && <QuickAction label="Faltou" onClick={() => marcarFalta(item)} />}
+                            {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => confirmarCancelamento(item)} />}
                           </div>
                           {item.origem !== "horario_customizado" && (
                             <CollapsibleCard title="Ajuste financeiro" subtitle="Abra so quando precisar">
@@ -1462,6 +1533,8 @@ function MobileScheduleSection({
   setExpandedId,
   loadingOperacao,
   loadingSemana,
+  canConcludeNow,
+  canNoShowNow,
   onCancelar,
   onConcluir,
   onNoShow,
@@ -1480,11 +1553,22 @@ function MobileScheduleSection({
   setExpandedId: (value: string | null) => void
   loadingOperacao: boolean
   loadingSemana: boolean
+  canConcludeNow: (item: Agendamento) => boolean
+  canNoShowNow: (item: Agendamento) => boolean
   onCancelar: (item: Agendamento) => void
   onConcluir: (item: Agendamento) => void
   onNoShow: (item: Agendamento) => void
 }) {
-  const timeline = slots.map((slot) => {
+  const timelineSlots = Array.from(
+    new Set([
+      ...slots,
+      ...operacaoDoDia
+        .filter((agendamento) => agendamento.status_agendamento !== "cancelado" && agendamento.status !== "cancelado")
+        .map((agendamento) => formatarHora(agendamento.hora_inicio)),
+    ])
+  ).sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
+
+  const timeline = timelineSlots.map((slot) => {
     const item = operacaoDoDia.find((agendamento) => {
       const inicio = timeToMinutes(agendamento.hora_inicio)
       const fim = timeToMinutes(agendamento.hora_fim)
@@ -1560,8 +1644,8 @@ function MobileScheduleSection({
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       {normalizePhoneLink(item.celular_cliente) ? <a href={normalizePhoneLink(item.celular_cliente) || "#"} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200">WhatsApp</a> : <div />}
-                      {canConclude(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
-                      {canNoShow(item) && <QuickAction label="No-show" onClick={() => onNoShow(item)} />}
+                      {canConcludeNow(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
+                      {canNoShowNow(item) && <QuickAction label="Faltou" onClick={() => onNoShow(item)} />}
                       {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => onCancelar(item)} />}
                     </div>
                   </div>
@@ -1607,8 +1691,8 @@ function MobileScheduleSection({
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2">
                               {normalizePhoneLink(item.celular_cliente) ? <a href={normalizePhoneLink(item.celular_cliente) || "#"} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200">WhatsApp</a> : <div />}
-                              {canConclude(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
-                              {canNoShow(item) && <QuickAction label="No-show" onClick={() => onNoShow(item)} />}
+                              {canConcludeNow(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
+                              {canNoShowNow(item) && <QuickAction label="Faltou" onClick={() => onNoShow(item)} />}
                               {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => onCancelar(item)} />}
                             </div>
                           </div>

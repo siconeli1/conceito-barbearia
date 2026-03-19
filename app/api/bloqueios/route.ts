@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { overlaps, parseTimeToMinutes } from "@/lib/agenda-conflicts"
 import { supabase } from "@/lib/supabase"
 
 function getBloqueiosErrorMessage(error: { code?: string; message: string }) {
@@ -49,26 +50,157 @@ export async function POST(req: Request) {
       return NextResponse.json({ erro: "A data e obrigatoria." }, { status: 400 })
     }
 
-    // Se está bloqueando dia inteiro, verificar se há agendamentos ativos
-    if (tipo_bloqueio === 'dia_inteiro') {
-      const { data: agendamentosAtivos, error: errorAgendamentos } = await supabase
-        .from('agendamentos')
-        .select('id, nome_cliente, celular_cliente, hora_inicio')
-        .eq('data', data)
-        .eq('status', 'ativo')
-
-      if (errorAgendamentos) {
+    if (tipo_bloqueio === "horario") {
+      if (!hora_inicio || !hora_fim) {
         return NextResponse.json(
-          { erro: getBloqueiosErrorMessage(errorAgendamentos) },
+          { erro: "Hora de inicio e hora de fim sao obrigatorias para bloquear um horario especifico." },
+          { status: 400 }
+        )
+      }
+
+      if (hora_inicio >= hora_fim) {
+        return NextResponse.json(
+          { erro: "Hora de fim deve ser apos hora de inicio." },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (tipo_bloqueio === "dia_inteiro") {
+      const [{ data: agendamentos, error: agendamentosError }, { data: horariosCustomizados, error: horariosError }] =
+        await Promise.all([
+          supabase
+            .from("agendamentos")
+            .select("id, nome_cliente, celular_cliente, hora_inicio, hora_fim, status, status_agendamento")
+            .eq("data", data),
+          supabase
+            .from("horarios_customizados")
+            .select("id, nome_cliente, celular_cliente, hora_inicio, hora_fim")
+            .eq("data", data),
+        ])
+
+      if (agendamentosError) {
+        return NextResponse.json(
+          { erro: getBloqueiosErrorMessage(agendamentosError) },
           { status: 500 }
         )
       }
 
-      if (agendamentosAtivos && agendamentosAtivos.length > 0) {
-        return NextResponse.json({
-          erro: `Não é possível bloquear o dia inteiro. Existem ${agendamentosAtivos.length} agendamento(s) ativo(s) nesta data. Entre em contato com os clientes para cancelar os horários antes de bloquear o dia.`,
-          agendamentos: agendamentosAtivos
-        }, { status: 400 })
+      if (horariosError) {
+        return NextResponse.json(
+          { erro: getBloqueiosErrorMessage(horariosError) },
+          { status: 500 }
+        )
+      }
+
+      const ocupacoesAtivas = [
+        ...((agendamentos || [])
+          .filter((agendamento) =>
+            agendamento.status_agendamento
+              ? agendamento.status_agendamento !== "cancelado"
+              : agendamento.status === "ativo"
+          )
+          .map((agendamento) => ({
+            id: agendamento.id,
+            nome_cliente: agendamento.nome_cliente,
+            celular_cliente: agendamento.celular_cliente,
+            hora_inicio: agendamento.hora_inicio,
+            hora_fim: agendamento.hora_fim,
+            origem: "agendamento",
+          }))),
+        ...((horariosCustomizados || []).map((horario) => ({
+          id: horario.id,
+          nome_cliente: horario.nome_cliente,
+          celular_cliente: horario.celular_cliente,
+          hora_inicio: horario.hora_inicio,
+          hora_fim: horario.hora_fim,
+          origem: "horario_customizado",
+        }))),
+      ]
+
+      if (ocupacoesAtivas.length > 0) {
+        return NextResponse.json(
+          {
+            erro: `Nao e possivel bloquear o dia inteiro. Existem ${ocupacoesAtivas.length} horario(s) ocupado(s) nesta data. Cancele ou ajuste esses atendimentos antes de bloquear o dia.`,
+            agendamentos: ocupacoesAtivas,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (tipo_bloqueio === "horario") {
+      const inicio = parseTimeToMinutes(hora_inicio)
+      const fim = parseTimeToMinutes(hora_fim)
+
+      const [{ data: agendamentos, error: agendamentosError }, { data: horariosCustomizados, error: horariosError }] =
+        await Promise.all([
+          supabase
+            .from("agendamentos")
+            .select("id, nome_cliente, celular_cliente, hora_inicio, hora_fim, status, status_agendamento")
+            .eq("data", data),
+          supabase
+            .from("horarios_customizados")
+            .select("id, nome_cliente, celular_cliente, hora_inicio, hora_fim")
+            .eq("data", data),
+        ])
+
+      if (agendamentosError) {
+        return NextResponse.json(
+          { erro: getBloqueiosErrorMessage(agendamentosError) },
+          { status: 500 }
+        )
+      }
+
+      if (horariosError) {
+        return NextResponse.json(
+          { erro: getBloqueiosErrorMessage(horariosError) },
+          { status: 500 }
+        )
+      }
+
+      const conflitoAgendamento = (agendamentos || [])
+        .filter((agendamento) =>
+          agendamento.status_agendamento
+            ? agendamento.status_agendamento !== "cancelado"
+            : agendamento.status === "ativo"
+        )
+        .find((agendamento) =>
+          overlaps(
+            inicio,
+            fim,
+            parseTimeToMinutes(String(agendamento.hora_inicio)),
+            parseTimeToMinutes(String(agendamento.hora_fim))
+          )
+        )
+
+      if (conflitoAgendamento) {
+        return NextResponse.json(
+          {
+            erro: "Nao e possivel bloquear este horario porque ele conflita com um agendamento existente.",
+            conflito: conflitoAgendamento,
+          },
+          { status: 409 }
+        )
+      }
+
+      const conflitoHorarioCustomizado = (horariosCustomizados || []).find((horario) =>
+        overlaps(
+          inicio,
+          fim,
+          parseTimeToMinutes(String(horario.hora_inicio)),
+          parseTimeToMinutes(String(horario.hora_fim))
+        )
+      )
+
+      if (conflitoHorarioCustomizado) {
+        return NextResponse.json(
+          {
+            erro: "Nao e possivel bloquear este horario porque ele conflita com um horario personalizado ja reservado.",
+            conflito: conflitoHorarioCustomizado,
+          },
+          { status: 409 }
+        )
       }
     }
 
@@ -81,7 +213,7 @@ export async function POST(req: Request) {
           hora_fim: dia_inteiro ? null : hora_fim || null,
           dia_inteiro: !!dia_inteiro,
           motivo: motivo || null,
-          tipo_bloqueio: tipo_bloqueio || 'horario',
+          tipo_bloqueio: tipo_bloqueio || "horario",
         },
       ])
       .select()

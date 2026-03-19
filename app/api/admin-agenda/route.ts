@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { calcularValorFinal, syncAutoClosedAgendamentos } from "@/lib/agendamento"
+import { canCancelAppointment, canConcludeAppointment, canMarkNoShow } from "@/lib/agendamento-rules"
 
 function getAgendaErrorMessage(error: { code?: string; message: string }) {
   if (error.code === "42P01") {
@@ -119,7 +120,7 @@ export async function PATCH(req: Request) {
 
     const { data: atual, error: loadError } = await supabase
       .from("agendamentos")
-      .select("id, valor_tabela, desconto, acrescimo")
+      .select("id, data, hora_inicio, hora_fim, valor_tabela, desconto, acrescimo, status, status_agendamento, status_atendimento, status_pagamento, origem_agendamento")
       .eq("id", id)
       .maybeSingle()
 
@@ -129,6 +130,27 @@ export async function PATCH(req: Request) {
 
     if (!atual) {
       return NextResponse.json({ erro: "Agendamento nao encontrado." }, { status: 404 })
+    }
+
+    if (status_agendamento === "cancelado" && !canCancelAppointment(atual)) {
+      return NextResponse.json(
+        { erro: "Este agendamento nao pode mais ser cancelado porque o horario ja comecou ou ele ja foi finalizado." },
+        { status: 409 }
+      )
+    }
+
+    if (status_agendamento === "no_show" && !canMarkNoShow(atual)) {
+      return NextResponse.json(
+        { erro: "So e possivel marcar falta apos o horario do agendamento e antes da conclusao." },
+        { status: 409 }
+      )
+    }
+
+    if (status_atendimento === "concluido" && !canConcludeAppointment(atual)) {
+      return NextResponse.json(
+        { erro: "So e possivel concluir o atendimento apos o horario marcado e antes de cancelar ou marcar falta." },
+        { status: 409 }
+      )
     }
 
     const descontoFinal = normalizeMoneyField(desconto, atual.desconto)
