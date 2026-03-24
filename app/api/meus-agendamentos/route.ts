@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 
     if (!celular) {
       return NextResponse.json(
-        { erro: "Celular obrigatorio" },
+        { erro: "Celular obrigatório" },
         { status: 400 }
       )
     }

@@ -291,11 +291,11 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                 <div className="p-8 sm:p-12 border-b lg:border-b-0 lg:border-r border-white/10">
                   <div className="inline-flex items-center gap-3 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-300 mb-8">
                     <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
-                    Horario agendado com sucesso
+                    Horário agendado com sucesso
                   </div>
 
                   <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white mb-4">
-                    Seu horario esta confirmado.
+                    Seu horário está confirmado.
                   </h1>
                   <p className="text-lg text-gray-300 max-w-xl leading-relaxed mb-10">
                     Reservamos seu atendimento na Conceito Barbearia. Confira os detalhes abaixo e, se precisar,
@@ -304,17 +304,17 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="border border-white/10 bg-black/30 p-5">
-                      <p className="text-xs uppercase tracking-[0.22em] text-gray-500 mb-2">Servico</p>
+                      <p className="text-xs uppercase tracking-[0.22em] text-gray-500 mb-2">Serviço</p>
                       <p className="text-xl font-semibold text-white mb-1">{agendamentoConfirmado.servico_nome}</p>
                       <p className="text-sm text-gray-400">
                         {agendamentoConfirmado.servico_duracao} min • {formatarPreco(agendamentoConfirmado.servico_preco)}
                       </p>
                     </div>
                     <div className="border border-white/10 bg-black/30 p-5">
-                      <p className="text-xs uppercase tracking-[0.22em] text-gray-500 mb-2">Horario</p>
+                      <p className="text-xs uppercase tracking-[0.22em] text-gray-500 mb-2">Horário</p>
                       <p className="text-xl font-semibold text-white mb-1">{formatarDataResumo(agendamentoConfirmado.data)}</p>
                       <p className="text-sm text-gray-400">
-                        {agendamentoConfirmado.hora_inicio} ate {agendamentoConfirmado.hora_fim}
+                        {agendamentoConfirmado.hora_inicio} até {agendamentoConfirmado.hora_fim}
                       </p>
                     </div>
                   </div>
@@ -340,7 +340,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                       <span className="text-right text-white font-medium">{formatarDataResumo(agendamentoConfirmado.data)}</span>
                     </div>
                     <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
-                      <span className="text-gray-500">Inicio</span>
+                      <span className="text-gray-500">Início</span>
                       <span className="text-right text-white font-medium">{agendamentoConfirmado.hora_inicio}</span>
                     </div>
                     <div className="flex items-start justify-between gap-6 border-b border-white/10 pb-4">
@@ -391,7 +391,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
             Voltar
           </Link>
           <h1 className="text-3xl sm:text-4xl font-bold mb-2">Agendar Horário</h1>
-          <p className="text-gray-400 text-lg">Escolha serviço, data e horário</p>
+          <p className="text-gray-400 text-lg">Escolha o serviço, a data e o horário</p>
         </div>
 
         <div className="mb-8 overflow-x-auto">
@@ -512,7 +512,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                   : "Mostrando os principais horários disponíveis."}
               </p>
             )}
-            {!servicoSelecionado && <p className="text-gray-400">Escolha um serviço para ver horários</p>}
+            {!servicoSelecionado && <p className="text-gray-400">Escolha um serviço para ver os horários</p>}
             {carregandoHorarios && servicoSelecionado && <p className="text-gray-400">Carregando horários...</p>}
             {!carregandoHorarios && slots.length === 0 && data && !pastDate && !outOfRange && servicoSelecionado && (
               <p className="text-gray-400">Nenhum horário disponível para esta data</p>

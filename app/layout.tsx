@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Conceito Barbearia",
-  description: "Agenda e operacao da Conceito Barbearia",
+  description: "Agendamento e operação da Conceito Barbearia",
 };
 
 export default function RootLayout({

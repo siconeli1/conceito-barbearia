@@ -62,7 +62,7 @@ type DraftFinanceiro = {
 }
 
 const NAV_ITEMS: { id: View; label: string; shortLabel: string }[] = [
-  { id: "operacao", label: "Hoje", shortLabel: "Hoje" },
+  { id: "operacao", label: "Dia", shortLabel: "Dia" },
   { id: "agenda", label: "Agenda", shortLabel: "Agenda" },
   { id: "clientes", label: "Clientes", shortLabel: "Clientes" },
   { id: "financeiro", label: "Financeiro", shortLabel: "Caixa" },
@@ -936,7 +936,7 @@ export default function AdminPage() {
         {view === "operacao" && (
           <section className="space-y-6">
             <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard titulo="Pendentes hoje" valor={String(clientesPendentesHoje)} />
+              <MetricCard titulo="Pendentes do dia" valor={String(clientesPendentesHoje)} />
               <MetricCard titulo="Receita do dia" valor={moeda(metricasDia.receitaPrevista)} accent />
               <MetricCard titulo="Proximo horario" valor={proximoHorario ? formatarHora(proximoHorario.hora_inicio) : "--:--"} success />
             </div>

@@ -153,10 +153,10 @@ function MeusAgendamentosContent() {
 
   function getStatusLabel(agendamento: AgendamentoComEstado) {
     if (agendamento.status_agendamento === "cancelado" || agendamento.status === "cancelado") return "Cancelado"
-    if (agendamento.status_agendamento === "no_show") return "Nao compareceu"
+    if (agendamento.status_agendamento === "no_show") return "Não compareceu"
     if (agendamento.status_pagamento === "pago") return "Pago"
-    if (agendamento.status_atendimento === "concluido") return "Concluido"
-    if (agendamento.passouDoHorario) return "Horario encerrado"
+    if (agendamento.status_atendimento === "concluido") return "Concluído"
+    if (agendamento.passouDoHorario) return "Horário encerrado"
     if (agendamento.status_atendimento === "em_atendimento") return "Em atendimento"
     if (agendamento.status_agendamento === "confirmado") return "Confirmado"
     return "Agendado"
@@ -270,7 +270,7 @@ function MeusAgendamentosContent() {
           </div>
 
           <p className="text-sm text-gray-400">
-            Digite o mesmo celular usado no agendamento para consultar ou cancelar seus horarios.
+            Digite o mesmo celular usado no agendamento para consultar ou cancelar seus horários.
           </p>
         </div>
 
@@ -283,7 +283,7 @@ function MeusAgendamentosContent() {
         {agendamentosAtivos.length > 0 && (
           <section className="mb-12">
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Proximos Agendamentos ({agendamentosAtivos.length})
+              Próximos Agendamentos ({agendamentosAtivos.length})
             </h2>
             <div className="space-y-4">
               {agendamentosAtivos.map((agendamento) => (
@@ -305,8 +305,8 @@ function MeusAgendamentosContent() {
 
                   <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
                     <div>
-                      <p className="text-gray-400 mb-1">Servico</p>
-                      <p className="text-white font-semibold">{agendamento.servico_nome || "Nao informado"}</p>
+                      <p className="text-gray-400 mb-1">Serviço</p>
+                      <p className="text-white font-semibold">{agendamento.servico_nome || "Não informado"}</p>
                     </div>
                     <div>
                       <p className="text-gray-400 mb-1">Valor</p>
@@ -332,7 +332,7 @@ function MeusAgendamentosContent() {
         {agendamentosHistorico.length > 0 && (
           <section>
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Historico ({agendamentosHistorico.length})
+              Histórico ({agendamentosHistorico.length})
             </h2>
             <div className="space-y-4">
               {agendamentosHistorico.map((agendamento) => (
@@ -343,7 +343,7 @@ function MeusAgendamentosContent() {
                       <p className="text-gray-400">
                         {formatarHora(agendamento.hora_inicio)} - {formatarHora(agendamento.hora_fim)}
                       </p>
-                      <p className="text-gray-300 mt-2">{agendamento.servico_nome || "Nao informado"}</p>
+                      <p className="text-gray-300 mt-2">{agendamento.servico_nome || "Não informado"}</p>
                     </div>
                     <span className="text-sm text-gray-400">{getStatusLabel(agendamento)}</span>
                   </div>

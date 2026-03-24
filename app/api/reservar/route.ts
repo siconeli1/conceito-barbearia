@@ -18,13 +18,13 @@ export async function POST(req: Request) {
 
   if (!data || !hora_inicio || !nome_cliente || !celular_cliente || (!servicoId && !servicoCodigo)) {
     return NextResponse.json(
-      { erro: 'Campos obrigatorios: data, hora_inicio, nome, celular, servico' },
+      { erro: 'Campos obrigatórios: data, hora_inicio, nome, celular, serviço' },
       { status: 400 }
     )
   }
 
   if (!isValidPhone(celular_cliente)) {
-    return NextResponse.json({ erro: 'Celular invalido' }, { status: 400 })
+    return NextResponse.json({ erro: 'Celular inválido' }, { status: 400 })
   }
 
   const d = new Date(`${data}T00:00:00`)
@@ -36,12 +36,12 @@ export async function POST(req: Request) {
 
   const servico = await encontrarServicoAtivo({ id: servicoId, codigo: servicoCodigo })
   if (!servico) {
-    return NextResponse.json({ erro: 'Servico invalido ou inativo' }, { status: 400 })
+    return NextResponse.json({ erro: 'Serviço inválido ou inativo' }, { status: 400 })
   }
 
   const duracao = Number(servico.duracao_minutos)
   if (!Number.isFinite(duracao) || duracao <= 0) {
-    return NextResponse.json({ erro: 'Duracao do servico invalida' }, { status: 400 })
+    return NextResponse.json({ erro: 'Duração do serviço inválida' }, { status: 400 })
   }
 
   const inicioReserva = timeToMinutes(hora_inicio)
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
   if (!isAppointmentWithinSchedule(day, inicioReserva, duracao)) {
     return NextResponse.json(
-      { erro: 'Nao ha tempo suficiente para este servico nesse horario' },
+      { erro: 'Não há tempo suficiente para este serviço nesse horário' },
       { status: 409 }
     )
   }
@@ -65,13 +65,13 @@ export async function POST(req: Request) {
   }
 
   if (busyState.bloqueioDiaInteiro || busyState.naoAceitarMais) {
-    return NextResponse.json({ erro: 'Data indisponivel para agendamento' }, { status: 409 })
+    return NextResponse.json({ erro: 'Data indisponível para agendamento' }, { status: 409 })
   }
 
   const horariosDisponiveis = new Set(generateCandidateStartTimes(day, duracao, busyState.intervalos))
 
   if (!horariosDisponiveis.has(inicioReserva)) {
-    return NextResponse.json({ erro: 'Horario invalido para este servico' }, { status: 409 })
+    return NextResponse.json({ erro: 'Horário inválido para este serviço' }, { status: 409 })
   }
 
   const temConflito = busyState.intervalos.some(
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   )
 
   if (temConflito) {
-    return NextResponse.json({ erro: 'Horario indisponivel para a duracao do servico' }, { status: 409 })
+    return NextResponse.json({ erro: 'Horário indisponível para a duração do serviço' }, { status: 409 })
   }
 
   const valorTabela = Number(servico.preco ?? 0)
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
       msg.includes('exclusion') ||
       msg.includes('overlap')
     ) {
-      return NextResponse.json({ erro: 'Horario ja reservado para esse periodo' }, { status: 409 })
+      return NextResponse.json({ erro: 'Horário já reservado para esse período' }, { status: 409 })
     }
     return NextResponse.json({ erro: error.message }, { status: 500 })
   }

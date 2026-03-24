@@ -85,7 +85,7 @@ export default function Home() {
           <div className="border-l border-white/20 pl-8">
             <p className="text-gray-400 mb-2">Retorno e encerramento</p>
             <p className="text-2xl font-semibold">14:00 - 20:00</p>
-            <p className="text-sm text-gray-500 mt-2">Ultimo horario para iniciar atendimento: 19:00</p>
+            <p className="text-sm text-gray-500 mt-2">Último horário para iniciar o atendimento: 19:00</p>
           </div>
         </div>
       </div>

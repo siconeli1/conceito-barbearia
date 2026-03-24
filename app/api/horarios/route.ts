@@ -15,19 +15,19 @@ export async function GET(req: Request) {
 
   if (!servicoId && !servicoCodigo) {
     return NextResponse.json(
-      { erro: 'Informe o servico em ?servico_id=... ou ?servico_codigo=...' },
+      { erro: 'Informe o serviço em ?servico_id=... ou ?servico_codigo=...' },
       { status: 400 }
     )
   }
 
   const servico = await encontrarServicoAtivo({ id: servicoId, codigo: servicoCodigo })
   if (!servico) {
-    return NextResponse.json({ erro: 'Servico nao encontrado ou inativo' }, { status: 404 })
+    return NextResponse.json({ erro: 'Serviço não encontrado ou inativo' }, { status: 404 })
   }
 
   const duracao = Number(servico.duracao_minutos)
   if (!Number.isFinite(duracao) || duracao <= 0) {
-    return NextResponse.json({ erro: 'Duracao do servico invalida' }, { status: 400 })
+    return NextResponse.json({ erro: 'Duração do serviço inválida' }, { status: 400 })
   }
 
   const d = new Date(`${data}T00:00:00`)

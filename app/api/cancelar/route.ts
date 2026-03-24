@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     if (!id) {
       return NextResponse.json(
-        { erro: "ID nao informado" },
+        { erro: "ID não informado" },
         { status: 400 }
       )
     }
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
 
     if (!agendamento) {
       return NextResponse.json(
-        { erro: "Agendamento nao encontrado" },
+        { erro: "Agendamento não encontrado" },
         { status: 404 }
       )
     }
@@ -50,14 +50,14 @@ export async function POST(req: Request) {
     if (!isAdmin) {
       if (!celular) {
         return NextResponse.json(
-          { erro: "Celular obrigatorio" },
+          { erro: "Celular obrigatório" },
           { status: 401 }
         )
       }
 
       if (normalizePhone(agendamento.celular_cliente) !== celular) {
         return NextResponse.json(
-          { erro: "Nao autorizado a cancelar este agendamento" },
+          { erro: "Não autorizado a cancelar este agendamento" },
           { status: 403 }
         )
       }
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
     if (!canCancelAppointment(agendamento)) {
       return NextResponse.json(
-        { erro: "Este agendamento nao pode mais ser cancelado porque o horario ja comecou ou ele ja foi finalizado." },
+        { erro: "Este agendamento não pode mais ser cancelado porque o horário já começou ou ele já foi finalizado." },
         { status: 409 }
       )
     }
