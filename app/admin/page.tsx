@@ -61,6 +61,11 @@ type DraftFinanceiro = {
   observacoes: string
 }
 
+type ConfirmacaoOperacao = {
+  acao: "cancelar_agendamento" | "marcar_falta" | "remover_horario"
+  item: Agendamento
+}
+
 const NAV_ITEMS: { id: View; label: string; shortLabel: string }[] = [
   { id: "operacao", label: "Dia", shortLabel: "Dia" },
   { id: "agenda", label: "Agenda", shortLabel: "Agenda" },
@@ -214,6 +219,8 @@ export default function AdminPage() {
   const [mobileSection, setMobileSection] = useState<MobileSection>("cronograma")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileExpandedId, setMobileExpandedId] = useState<string | null>(null)
+  const [confirmacaoOperacao, setConfirmacaoOperacao] = useState<ConfirmacaoOperacao | null>(null)
+  const [processandoConfirmacao, setProcessandoConfirmacao] = useState(false)
 
   const operacaoRequestRef = useRef(0)
   const semanaRequestRef = useRef(0)
@@ -590,20 +597,40 @@ export default function AdminPage() {
     ])
   }
 
-  async function confirmarCancelamento(item: Agendamento) {
-    const nomeServico = item.servico_nome || "servico nao informado"
-    const confirmou = confirm(
-      `Deseja mesmo cancelar o corte de ${item.nome_cliente} (${nomeServico}) em ${formatarDataBR(item.data)} as ${formatarHora(item.hora_inicio)}?`
-    )
+  function abrirConfirmacaoOperacao(acao: ConfirmacaoOperacao["acao"], item: Agendamento) {
+    setConfirmacaoOperacao({ acao, item })
+  }
 
-    if (!confirmou) return
+  async function executarConfirmacaoOperacao() {
+    if (!confirmacaoOperacao) return
 
-    if (item.origem === "horario_customizado") {
-      await deletarHorario(item.id)
-      return
+    const { acao, item } = confirmacaoOperacao
+    setProcessandoConfirmacao(true)
+
+    try {
+      if (acao === "remover_horario") {
+        await deletarHorario(item.id, { skipConfirm: true })
+        return
+      }
+
+      if (acao === "cancelar_agendamento") {
+        await atualizarAgendamento(item.id, { status_agendamento: "cancelado" })
+        return
+      }
+
+      await marcarFalta(item)
+    } finally {
+      setProcessandoConfirmacao(false)
+      setConfirmacaoOperacao(null)
     }
+  }
 
-    await atualizarAgendamento(item.id, { status_agendamento: "cancelado" })
+  function confirmarCancelamento(item: Agendamento) {
+    abrirConfirmacaoOperacao(item.origem === "horario_customizado" ? "remover_horario" : "cancelar_agendamento", item)
+  }
+
+  function solicitarMarcarFalta(item: Agendamento) {
+    abrirConfirmacaoOperacao("marcar_falta", item)
   }
 
   async function atualizarAgendamento(id: string, patch: Record<string, string | number | null>) {
@@ -747,8 +774,8 @@ export default function AdminPage() {
     }
   }
 
-  async function deletarHorario(id: string) {
-    if (!confirm("Remover este horario personalizado?")) return
+  async function deletarHorario(id: string, options?: { skipConfirm?: boolean }) {
+    if (!options?.skipConfirm && !confirm("Remover este horario personalizado?")) return
     setErro(null)
     setMensagem(null)
     try {
@@ -810,6 +837,16 @@ export default function AdminPage() {
 
         {erro && <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-red-200">{erro}</div>}
         {mensagem && <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-200">{mensagem}</div>}
+        {confirmacaoOperacao && (
+          <ConfirmActionDialog
+            state={confirmacaoOperacao}
+            loading={processandoConfirmacao}
+            onClose={() => {
+              if (!processandoConfirmacao) setConfirmacaoOperacao(null)
+            }}
+            onConfirm={executarConfirmacaoOperacao}
+          />
+        )}
 
         <section className="md:hidden">
           <div className="mb-4 flex items-center justify-between gap-3 rounded-[24px] border border-[var(--line)] bg-[rgba(18,18,18,0.92)] px-4 py-4">
@@ -869,7 +906,7 @@ export default function AdminPage() {
               canNoShowNow={podeMarcarFaltaAgora}
               onCancelar={confirmarCancelamento}
               onConcluir={concluirAtendimento}
-              onNoShow={marcarFalta}
+              onNoShow={solicitarMarcarFalta}
             />
           )}
 
@@ -1002,12 +1039,16 @@ export default function AdminPage() {
                           <p className="text-lg text-white">{item.nome_cliente}</p>
                           <p className="mt-1 text-sm text-[var(--muted)]">{item.celular_cliente || "Sem telefone"}</p>
                           <p className="mt-2 text-sm text-zinc-200">{item.servico_nome || "Servico nao informado"}</p>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            {whatsappHref ? <a href={whatsappHref} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200 hover:bg-emerald-500/30">WhatsApp</a> : <div />}
-                            {podeConcluirAgora(item) && <QuickAction label="Concluir" onClick={() => concluirAtendimento(item)} />}
-                            {podeMarcarFaltaAgora(item) && <QuickAction label="Faltou" onClick={() => marcarFalta(item)} />}
-                            {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => confirmarCancelamento(item)} />}
-                          </div>
+                          <ActionFooter
+                            canConcluir={podeConcluirAgora(item)}
+                            canNoShow={podeMarcarFaltaAgora(item)}
+                            canCancelar={canCancel(item)}
+                            cancelLabel={item.origem === "horario_customizado" ? "Remover" : "Cancelar"}
+                            whatsappHref={whatsappHref}
+                            onConcluir={() => concluirAtendimento(item)}
+                            onNoShow={() => solicitarMarcarFalta(item)}
+                            onCancelar={() => confirmarCancelamento(item)}
+                          />
                           {item.origem !== "horario_customizado" && (
                             <CollapsibleCard title="Ajuste financeiro" subtitle="Abra so quando precisar">
                               <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1143,9 +1184,74 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function QuickAction({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
+function ActionFooter({
+  canConcluir,
+  canNoShow,
+  canCancelar,
+  cancelLabel,
+  whatsappHref,
+  onConcluir,
+  onNoShow,
+  onCancelar,
+  compact,
+}: {
+  canConcluir: boolean
+  canNoShow: boolean
+  canCancelar: boolean
+  cancelLabel: string
+  whatsappHref: string | null
+  onConcluir: () => void
+  onNoShow: () => void
+  onCancelar: () => void
+  compact?: boolean
+}) {
+  const gridClass = compact ? "grid-cols-2" : "grid-cols-2 xl:grid-cols-4"
+
   return (
-    <button onClick={onClick} className={`min-h-12 rounded-2xl px-4 py-3 text-center text-sm transition ${danger ? "border border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20" : "border border-white/10 bg-white/5 hover:bg-white/10"}`}>
+    <div className="mt-4 border-t border-white/10 pt-4">
+      <p className="mb-3 text-[10px] uppercase tracking-[0.22em] text-[var(--muted)]">Acoes rapidas</p>
+      <div className={`grid gap-2 ${gridClass}`}>
+        <ActionFooterButton label="Concluir" variant="accent" disabled={!canConcluir} onClick={onConcluir} />
+        <ActionFooterButton label="Faltou" variant="default" disabled={!canNoShow} onClick={onNoShow} />
+        <ActionFooterButton label={cancelLabel} variant="danger" disabled={!canCancelar} onClick={onCancelar} />
+        <ActionFooterButton label="WhatsApp" variant="whatsapp" href={whatsappHref} disabled={!whatsappHref} />
+      </div>
+    </div>
+  )
+}
+
+function ActionFooterButton({
+  label,
+  variant,
+  onClick,
+  href,
+  disabled,
+}: {
+  label: string
+  variant: "default" | "accent" | "danger" | "whatsapp"
+  onClick?: () => void
+  href?: string | null
+  disabled?: boolean
+}) {
+  const classes = [
+    "min-h-12 rounded-2xl px-4 py-3 text-center text-sm transition",
+    variant === "accent" ? "bg-[var(--accent)] text-black hover:brightness-105" : "",
+    variant === "danger" ? "border border-red-500/20 bg-red-500/10 text-red-200 hover:bg-red-500/20" : "",
+    variant === "whatsapp" ? "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30" : "",
+    variant === "default" ? "border border-white/10 bg-white/5 text-white hover:bg-white/10" : "",
+    disabled ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:bg-inherit" : "",
+  ].join(" ").trim()
+
+  if (href && !disabled) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={classes}>
+        {label}
+      </a>
+    )
+  }
+
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={classes}>
       {label}
     </button>
   )
@@ -1156,6 +1262,47 @@ function Badge({ label }: { label: string }) {
     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-zinc-200">
       {label}
     </span>
+  )
+}
+
+function ConfirmActionDialog({
+  state,
+  loading,
+  onClose,
+  onConfirm,
+}: {
+  state: ConfirmacaoOperacao
+  loading: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const serviceLabel = state.item.servico_nome || "Servico nao informado"
+  const cancelAction = state.acao === "remover_horario" ? "remover este horario manual" : state.acao === "marcar_falta" ? "marcar falta neste atendimento" : "cancelar este atendimento"
+  const confirmLabel = state.acao === "remover_horario" ? "Remover" : state.acao === "marcar_falta" ? "Marcar falta" : "Cancelar"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+      <button type="button" aria-label="Fechar confirmacao" className="absolute inset-0" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-[28px] border border-white/10 bg-[rgba(18,18,18,0.98)] p-5 shadow-2xl">
+        <p className="text-[10px] uppercase tracking-[0.28em] text-[var(--accent-strong)]">Confirmacao rapida</p>
+        <h3 className="mt-3 text-2xl font-semibold text-white">Deseja {cancelAction}?</h3>
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
+          <p className="text-white">{state.item.nome_cliente}</p>
+          <p className="mt-1 text-[var(--muted)]">{serviceLabel}</p>
+          <p className="mt-3 text-[var(--muted)]">
+            {formatarDataBR(state.item.data)} as {formatarHora(state.item.hora_inicio)} - {formatarHora(state.item.hora_fim)}
+          </p>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} disabled={loading} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10 disabled:opacity-50">
+            Voltar
+          </button>
+          <button type="button" onClick={onConfirm} disabled={loading} className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200 hover:bg-red-500/20 disabled:opacity-50">
+            {loading ? "Processando..." : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1642,12 +1789,17 @@ function MobileScheduleSection({
                       <InfoRow label="Preco" value={moeda(Number(item.valor_final ?? item.servico_preco ?? 0))} />
                       <InfoRow label="Status" value={badgeLabel(item)} />
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      {normalizePhoneLink(item.celular_cliente) ? <a href={normalizePhoneLink(item.celular_cliente) || "#"} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200">WhatsApp</a> : <div />}
-                      {canConcludeNow(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
-                      {canNoShowNow(item) && <QuickAction label="Faltou" onClick={() => onNoShow(item)} />}
-                      {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => onCancelar(item)} />}
-                    </div>
+                    <ActionFooter
+                      canConcluir={canConcludeNow(item)}
+                      canNoShow={canNoShowNow(item)}
+                      canCancelar={canCancel(item)}
+                      cancelLabel={item.origem === "horario_customizado" ? "Remover" : "Cancelar"}
+                      whatsappHref={normalizePhoneLink(item.celular_cliente)}
+                      onConcluir={() => onConcluir(item)}
+                      onNoShow={() => onNoShow(item)}
+                      onCancelar={() => onCancelar(item)}
+                      compact
+                    />
                   </div>
                 )}
               </div>
@@ -1689,12 +1841,17 @@ function MobileScheduleSection({
                               <InfoRow label="Preco" value={moeda(Number(item.valor_final ?? item.servico_preco ?? 0))} />
                               <InfoRow label="Status" value={badgeLabel(item)} />
                             </div>
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                              {normalizePhoneLink(item.celular_cliente) ? <a href={normalizePhoneLink(item.celular_cliente) || "#"} target="_blank" rel="noreferrer" className="rounded-2xl bg-emerald-500/20 px-4 py-3 text-center text-sm text-emerald-200">WhatsApp</a> : <div />}
-                              {canConcludeNow(item) && <QuickAction label="Concluir" onClick={() => onConcluir(item)} />}
-                              {canNoShowNow(item) && <QuickAction label="Faltou" onClick={() => onNoShow(item)} />}
-                              {canCancel(item) && <QuickAction danger label={item.origem === "horario_customizado" ? "Remover" : "Cancelar"} onClick={() => onCancelar(item)} />}
-                            </div>
+                            <ActionFooter
+                              canConcluir={canConcludeNow(item)}
+                              canNoShow={canNoShowNow(item)}
+                              canCancelar={canCancel(item)}
+                              cancelLabel={item.origem === "horario_customizado" ? "Remover" : "Cancelar"}
+                              whatsappHref={normalizePhoneLink(item.celular_cliente)}
+                              onConcluir={() => onConcluir(item)}
+                              onNoShow={() => onNoShow(item)}
+                              onCancelar={() => onCancelar(item)}
+                              compact
+                            />
                           </div>
                         )}
                       </div>
