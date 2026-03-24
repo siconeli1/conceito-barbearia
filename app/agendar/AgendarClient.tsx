@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useReducer, useState } from "react"
 import Link from "next/link"
+import { MAX_BOOKING_BUSINESS_DAYS } from "@/lib/date"
 import { type Servico } from "@/lib/servicos"
-import { Slot, formatarCelular, getTodayInputValue, isDateBeyondLimit, isDateInPast } from "@/lib/format"
+import { Slot, formatarCelular, getMaxBusinessDateValue, getTodayInputValue, isDateBeyondBusinessLimit, isDateInPast } from "@/lib/format"
 import { useDebounce } from "@/lib/hooks"
 
 interface ServicosResponse {
@@ -83,7 +84,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
   const debouncedData = useDebounce(data, 300)
   const iso = data || null
   const pastDate = iso ? isDateInPast(iso) : false
-  const outOfRange = iso ? isDateBeyondLimit(iso, 30) : false
+  const outOfRange = iso ? isDateBeyondBusinessLimit(iso, MAX_BOOKING_BUSINESS_DAYS) : false
 
   const dayNumber = data ? new Date(`${data}T00:00:00`).getDay() : -1
   const isSaturday = dayNumber === 6
@@ -492,11 +493,12 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                 dateInvalid ? "border-red-600" : "border-white/20"
               }`}
               min={getTodayInputValue()}
+              max={getMaxBusinessDateValue(MAX_BOOKING_BUSINESS_DAYS)}
             />
             {data && (
               <div className="text-sm text-gray-400 mt-2">
                 {pastDate && <span className="text-red-400">Data no passado</span>}
-                {outOfRange && <span className="text-red-400">Data fora do intervalo (máx. 30 dias)</span>}
+                {outOfRange && <span className="text-red-400">Data fora do intervalo (máx. 15 dias úteis)</span>}
                 {isClosedDay && <span className="text-red-400">{closedMessage}</span>}
                 {!pastDate && !outOfRange && !isClosedDay && <span className="text-green-400">Data válida. Atendimento das 08:30 às 12:00 e das 14:00 às 20:00, com último início às 19:00.</span>}
               </div>
@@ -515,7 +517,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
             {!servicoSelecionado && <p className="text-gray-400">Escolha um serviço para ver os horários</p>}
             {carregandoHorarios && servicoSelecionado && <p className="text-gray-400">Carregando horários...</p>}
             {!carregandoHorarios && slots.length === 0 && data && !pastDate && !outOfRange && servicoSelecionado && (
-              <p className="text-gray-400">Nenhum horário disponível para esta data</p>
+              <p className="text-red-400">Nenhum horário disponível para esta data</p>
             )}
             {!carregandoHorarios && hasExtraSlots && (
               <button

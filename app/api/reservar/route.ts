@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { AGENDA_CONFIG, generateCandidateStartTimes, isAppointmentWithinSchedule, minutesToTime, timeToMinutes } from '@/lib/agenda'
 import { calcularValorFinal } from '@/lib/agendamento'
 import { getBusyIntervals } from '@/lib/agenda-conflicts'
+import { isDateBeyondBusinessLimitInTimezone, MAX_BOOKING_BUSINESS_DAYS } from '@/lib/date'
 import { isValidPhone, normalizePhone } from '@/lib/phone'
 import { encontrarServicoAtivo } from '@/lib/servicos'
 
@@ -25,6 +26,10 @@ export async function POST(req: Request) {
 
   if (!isValidPhone(celular_cliente)) {
     return NextResponse.json({ erro: 'Celular inválido' }, { status: 400 })
+  }
+
+  if (isDateBeyondBusinessLimitInTimezone(data, MAX_BOOKING_BUSINESS_DAYS)) {
+    return NextResponse.json({ erro: 'Data fora do intervalo permitido para agendamento (máx. 15 dias úteis).' }, { status: 400 })
   }
 
   const d = new Date(`${data}T00:00:00`)

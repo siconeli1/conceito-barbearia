@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { AGENDA_CONFIG, filterPastSlotsForDate, generateCandidateStartTimes, minutesToTime, reduceVisibleSlots, timeToMinutes } from '@/lib/agenda'
 import { getBusyIntervals, overlaps } from '@/lib/agenda-conflicts'
+import { isDateBeyondBusinessLimitInTimezone, MAX_BOOKING_BUSINESS_DAYS } from '@/lib/date'
 import { encontrarServicoAtivo } from '@/lib/servicos'
 
 export async function GET(req: Request) {
@@ -11,6 +12,10 @@ export async function GET(req: Request) {
 
   if (!data) {
     return NextResponse.json({ erro: 'Informe ?data=YYYY-MM-DD' }, { status: 400 })
+  }
+
+  if (isDateBeyondBusinessLimitInTimezone(data, MAX_BOOKING_BUSINESS_DAYS)) {
+    return NextResponse.json({ erro: 'Data fora do intervalo permitido para agendamento (máx. 15 dias úteis).' }, { status: 400 })
   }
 
   if (!servicoId && !servicoCodigo) {

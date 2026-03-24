@@ -1,4 +1,4 @@
-import { getLocalDateInputValue, isDateBeyondLimitInTimezone, isDateInPastInTimezone } from '@/lib/date'
+import { getLocalDateInputValue, getMaxBusinessDateInputValue, isDateBeyondBusinessLimitInTimezone, isDateBeyondLimitInTimezone, isDateInPastInTimezone } from '@/lib/date'
 import { formatPhone } from '@/lib/phone'
 
 export type Slot = {
@@ -60,6 +60,14 @@ export function isDateBeyondLimit(iso: string, maxDays: number) {
   return isDateBeyondLimitInTimezone(iso, maxDays)
 }
 
+export function isDateBeyondBusinessLimit(iso: string, maxBusinessDays: number) {
+  return isDateBeyondBusinessLimitInTimezone(iso, maxBusinessDays)
+}
+
 export function getTodayInputValue() {
   return getLocalDateInputValue()
+}
+
+export function getMaxBusinessDateValue(maxBusinessDays: number) {
+  return getMaxBusinessDateInputValue(maxBusinessDays)
 }
