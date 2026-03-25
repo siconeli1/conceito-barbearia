@@ -1722,7 +1722,20 @@ function MobileScheduleSection({
       const current = timeToMinutes(slot)
       return current >= inicio && current < fim && agendamento.status_agendamento !== "cancelado" && agendamento.status !== "cancelado"
     })
-    return { slot, item: item ?? null }
+
+    if (!item) {
+      return { slot, item: null, isStart: false, isContinuation: false }
+    }
+
+    const current = timeToMinutes(slot)
+    const start = timeToMinutes(item.hora_inicio)
+
+    return {
+      slot,
+      item,
+      isStart: current === start,
+      isContinuation: current > start,
+    }
   })
 
   return (
@@ -1759,12 +1772,12 @@ function MobileScheduleSection({
           {!loadingOperacao && (
             <div className="relative">
               <div className="absolute bottom-0 left-[4.25rem] top-0 w-px bg-white/8" />
-              {timeline.map(({ slot, item }, index) => {
+              {timeline.map(({ slot, item, isStart, isContinuation }, index) => {
             const rowId = item ? `${item.id}-${slot}` : `empty-${dataOperacao}-${slot}`
             const expanded = expandedId === rowId
             return (
               <div key={rowId} className={`border-b border-white/8 px-4 py-2.5 ${index % 2 === 0 ? "bg-white/[0.015]" : ""}`}>
-                <button type="button" onClick={() => setExpandedId(item ? (expanded ? null : rowId) : null)} className="grid w-full grid-cols-[68px_1fr] items-start gap-3 text-left">
+                <button type="button" onClick={() => setExpandedId(item && isStart ? (expanded ? null : rowId) : null)} className="grid w-full grid-cols-[68px_1fr] items-start gap-3 text-left">
                   <span className="pt-2 text-xs font-semibold tracking-[0.08em] text-[var(--accent-strong)]">{slot}</span>
                   <div className="relative pb-1">
                     {!item && (
@@ -1772,7 +1785,7 @@ function MobileScheduleSection({
                         <p className="text-sm text-[var(--muted)]">Horario livre</p>
                       </div>
                     )}
-                    {item && (
+                    {item && isStart && (
                       <div className={`rounded-2xl border px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition ${
                         expanded ? "border-[var(--accent)] bg-[rgba(197,154,92,0.14)]" : "border-white/10 bg-black/30"
                       }`}>
@@ -1780,9 +1793,14 @@ function MobileScheduleSection({
                         <p className="mt-1 text-sm text-[var(--muted)]">{item.nome_cliente}</p>
                       </div>
                     )}
+                    {item && isContinuation && (
+                      <div className="flex min-h-12 items-center px-3 py-3">
+                        <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Em andamento ate {formatarHora(item.hora_fim)}</p>
+                      </div>
+                    )}
                   </div>
                 </button>
-                {item && expanded && (
+                {item && isStart && expanded && (
                   <div className="mt-2 ml-[5rem] rounded-2xl border border-white/10 bg-black/35 p-3">
                     <div className="space-y-2 text-sm">
                       <InfoRow label="Horario" value={`${formatarHora(item.hora_inicio)} - ${formatarHora(item.hora_fim)}`} />
