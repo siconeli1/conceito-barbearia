@@ -143,6 +143,7 @@ function MeusAgendamentosContent() {
 
   const agendamentosAtivos = agendamentosComEstado.filter((item) => podeCancelar(item))
   const agendamentosHistorico = agendamentosComEstado.filter((item) => !podeCancelar(item))
+  const historicoLimitado = agendamentosHistorico.slice(0, 10)
 
   function formatarPreco(valor?: number) {
     return Number(valor ?? 0).toLocaleString("pt-BR", {
@@ -332,10 +333,10 @@ function MeusAgendamentosContent() {
         {agendamentosHistorico.length > 0 && (
           <section>
             <h2 className="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10">
-              Histórico ({agendamentosHistorico.length})
+              Histórico ({historicoLimitado.length})
             </h2>
             <div className="space-y-4">
-              {agendamentosHistorico.map((agendamento) => (
+              {historicoLimitado.map((agendamento) => (
                 <div key={agendamento.id} className="p-6 border border-white/10 rounded opacity-70">
                   <div className="flex justify-between gap-4">
                     <div>
