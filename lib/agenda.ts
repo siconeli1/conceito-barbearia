@@ -6,43 +6,47 @@ export type DailyPeriod = {
 export type DailySchedule = {
   periods: DailyPeriod[]
   lastStart: string
+  allowOverflowAfterLastStart?: boolean
 }
 
 export const DAILY_SCHEDULE: Record<number, DailySchedule> = {
-  1: {
-    periods: [
-      { start: '08:30', end: '12:00' },
-      { start: '14:00', end: '20:00' },
-    ],
-    lastStart: '19:00',
-  },
   2: {
     periods: [
-      { start: '08:30', end: '12:00' },
-      { start: '14:00', end: '20:00' },
+      { start: '09:00', end: '12:00' },
+      { start: '14:00', end: '19:00' },
     ],
     lastStart: '19:00',
+    allowOverflowAfterLastStart: true,
   },
   3: {
     periods: [
-      { start: '08:30', end: '12:00' },
-      { start: '14:00', end: '20:00' },
+      { start: '09:00', end: '12:00' },
+      { start: '14:00', end: '19:00' },
     ],
     lastStart: '19:00',
+    allowOverflowAfterLastStart: true,
   },
   4: {
     periods: [
-      { start: '08:30', end: '12:00' },
-      { start: '14:00', end: '20:00' },
+      { start: '09:00', end: '12:00' },
+      { start: '14:00', end: '19:00' },
     ],
     lastStart: '19:00',
+    allowOverflowAfterLastStart: true,
   },
   5: {
     periods: [
-      { start: '08:30', end: '12:00' },
-      { start: '14:00', end: '20:00' },
+      { start: '09:00', end: '12:00' },
+      { start: '14:00', end: '19:00' },
     ],
     lastStart: '19:00',
+    allowOverflowAfterLastStart: true,
+  },
+  6: {
+    periods: [
+      { start: '09:00', end: '14:00' },
+    ],
+    lastStart: '14:00',
   },
 }
 
@@ -99,6 +103,14 @@ export function isAppointmentWithinSchedule(day: number, startMinutes: number, d
     return false
   }
 
+  if (schedule.allowOverflowAfterLastStart && startMinutes === lastStart) {
+    return schedule.periods.some((period) => {
+      const periodStart = timeToMinutes(period.start)
+      const periodEnd = timeToMinutes(period.end)
+      return startMinutes >= periodStart && startMinutes <= periodEnd
+    })
+  }
+
   return schedule.periods.some((period) => {
     const periodStart = timeToMinutes(period.start)
     const periodEnd = timeToMinutes(period.end)
@@ -127,6 +139,18 @@ export function generateSlots(day: number, durationMinutes = AGENDA_CONFIG.slotM
       slots.push({
         hora_inicio: minutesToTime(t),
         hora_fim: minutesToTime(t + durationMinutes),
+      })
+    }
+
+    if (
+      schedule.allowOverflowAfterLastStart &&
+      lastStart >= start &&
+      lastStart <= end &&
+      !slots.some((slot) => slot.hora_inicio === minutesToTime(lastStart))
+    ) {
+      slots.push({
+        hora_inicio: minutesToTime(lastStart),
+        hora_fim: minutesToTime(lastStart + durationMinutes),
       })
     }
   }

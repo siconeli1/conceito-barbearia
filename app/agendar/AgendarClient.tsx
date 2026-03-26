@@ -87,10 +87,14 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
   const outOfRange = iso ? isDateBeyondBusinessLimit(iso, MAX_BOOKING_BUSINESS_DAYS) : false
 
   const dayNumber = data ? new Date(`${data}T00:00:00`).getDay() : -1
+  const isMonday = dayNumber === 1
   const isSaturday = dayNumber === 6
   const isSunday = dayNumber === 0
-  const closedMessage = isSunday ? "Fechado aos domingos" : isSaturday ? "Fechado aos sábados" : ""
-  const isClosedDay = isSaturday || isSunday
+  const closedMessage = isSunday ? "Fechado aos domingos" : isMonday ? "Fechado às segundas-feiras" : ""
+  const isClosedDay = isMonday || isSunday
+  const validDateMessage = isSaturday
+    ? "Data válida. Sábado com atendimento direto das 09:00 às 14:00."
+    : "Data válida. Atendimento de terça a sexta das 09:00 às 12:00 e das 14:00 às 19:00, com último horário aceito às 19:00."
   const servicoSelecionado = servicos.find((servico) => servico.id === servicoSelecionadoId) ?? null
 
   const [slots, setSlots] = useState<Slot[]>([])
@@ -500,7 +504,7 @@ export default function AgendarClient({ initialServicos, initialErro }: AgendarC
                 {pastDate && <span className="text-red-400">Data no passado</span>}
                 {outOfRange && <span className="text-red-400">Data fora do intervalo (máx. 15 dias úteis)</span>}
                 {isClosedDay && <span className="text-red-400">{closedMessage}</span>}
-                {!pastDate && !outOfRange && !isClosedDay && <span className="text-green-400">Data válida. Atendimento das 08:30 às 12:00 e das 14:00 às 20:00, com último início às 19:00.</span>}
+                {!pastDate && !outOfRange && !isClosedDay && <span className="text-green-400">{validDateMessage}</span>}
               </div>
             )}
           </div>

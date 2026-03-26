@@ -74,9 +74,20 @@ const NAV_ITEMS: { id: View; label: string; shortLabel: string }[] = [
   { id: "mais", label: "Mais", shortLabel: "Mais" },
 ]
 
+const ADMIN_STORAGE_KEYS = {
+  view: "conceito_admin_view",
+  mobileSection: "conceito_admin_mobile_section",
+  agendaMode: "conceito_admin_agenda_mode",
+} as const
+
 function formatarDataBR(data: string) {
   const [ano, mes, dia] = data.split("-")
   return `${dia}/${mes}/${ano}`
+}
+
+function formatarDataCurtaBR(data: string) {
+  const [, mes, dia] = data.split("-")
+  return `${dia}/${mes}`
 }
 
 function moeda(valor: number) {
@@ -109,6 +120,15 @@ function formatWeekday(dateIso: string) {
     weekday: "short",
     timeZone: "America/Sao_Paulo",
   }).format(new Date(`${dateIso}T12:00:00`))
+}
+
+function formatWeekdayLong(dateIso: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    timeZone: "America/Sao_Paulo",
+  })
+    .format(new Date(`${dateIso}T12:00:00`))
+    .replace("-", " ")
 }
 
 function buildTimeSlotsForDay(dateIso: string) {
@@ -191,6 +211,7 @@ function normalizePhoneLink(phone?: string | null) {
 
 export default function AdminPage() {
   const today = getTodayInputValue()
+  const tomorrow = addDays(today, 1)
   const clientesHistoricoInicio = "2000-01-01"
   const [view, setView] = useState<View>("operacao")
   const [agendaMode, setAgendaMode] = useState<AgendaMode>("dia")
@@ -345,6 +366,41 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const storedView = window.localStorage.getItem(ADMIN_STORAGE_KEYS.view)
+    const storedMobileSection = window.localStorage.getItem(ADMIN_STORAGE_KEYS.mobileSection)
+    const storedAgendaMode = window.localStorage.getItem(ADMIN_STORAGE_KEYS.agendaMode)
+
+    if (storedView && NAV_ITEMS.some((item) => item.id === storedView)) {
+      setView(storedView as View)
+    }
+
+    if (storedMobileSection && ["cronograma", "financeiro", "bloqueios", "horarios", "clientes"].includes(storedMobileSection)) {
+      setMobileSection(storedMobileSection as MobileSection)
+    }
+
+    if (storedAgendaMode && ["dia", "semana"].includes(storedAgendaMode)) {
+      setAgendaMode(storedAgendaMode as AgendaMode)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(ADMIN_STORAGE_KEYS.view, view)
+  }, [view])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(ADMIN_STORAGE_KEYS.mobileSection, mobileSection)
+  }, [mobileSection])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(ADMIN_STORAGE_KEYS.agendaMode, agendaMode)
+  }, [agendaMode])
+
+  useEffect(() => {
     carregarOperacao(dataOperacao)
   }, [carregarOperacao, dataOperacao])
 
@@ -361,12 +417,18 @@ export default function AdminPage() {
   }, [carregarClientes, clientesHistoricoInicio, today])
 
   useEffect(() => {
-    if (view === "mais") {
+    const shouldLoadBloqueios = view === "mais" || mobileSection === "bloqueios"
+    const shouldLoadHorarios = view === "mais" || mobileSection === "horarios"
+
+    if (shouldLoadBloqueios) {
       carregarBloqueios(dataBloqueio)
       carregarTodosBloqueios()
+    }
+
+    if (shouldLoadHorarios) {
       carregarHorarios(dataHorarios)
     }
-  }, [view, dataBloqueio, dataHorarios, carregarBloqueios, carregarTodosBloqueios, carregarHorarios])
+  }, [view, mobileSection, dataBloqueio, dataHorarios, carregarBloqueios, carregarTodosBloqueios, carregarHorarios])
 
   useEffect(() => {
     return () => {
@@ -699,7 +761,8 @@ export default function AdminPage() {
 
   async function criarBloqueio(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const form = new FormData(e.currentTarget)
+    const formElement = e.currentTarget
+    const form = new FormData(formElement)
     setErro(null)
     setMensagem(null)
     try {
@@ -721,7 +784,7 @@ export default function AdminPage() {
       setMensagem("Bloqueio criado com sucesso.")
       setDataBloqueio(data)
       await Promise.all([carregarBloqueios(data), carregarTodosBloqueios()])
-      ;(e.currentTarget as HTMLFormElement).reset()
+      formElement.reset()
       setTipoNovoBloqueio("horario")
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao criar bloqueio.")
@@ -749,7 +812,8 @@ export default function AdminPage() {
 
   async function criarHorario(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const form = new FormData(e.currentTarget)
+    const formElement = e.currentTarget
+    const form = new FormData(formElement)
     setErro(null)
     setMensagem(null)
     try {
@@ -768,7 +832,7 @@ export default function AdminPage() {
       if (!res.ok) throw new Error(String((json as Record<string, unknown>).erro || "Erro ao criar horario."))
       setMensagem("Horario personalizado criado com sucesso.")
       await Promise.all([carregarHorarios(dataHorarios), refreshAll()])
-      ;(e.currentTarget as HTMLFormElement).reset()
+      formElement.reset()
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Erro ao criar horario.")
     }
@@ -855,8 +919,8 @@ export default function AdminPage() {
               <h2 className="mt-2 text-xl font-semibold">
                 {mobileSection === "cronograma"
                   ? agendaMode === "dia"
-                    ? `Dia ${formatarDataBR(dataOperacao)}`
-                    : `Semana ${formatarDataBR(semanaBase)}`
+                    ? `Dia ${formatarDataCurtaBR(dataOperacao)}`
+                    : `${formatarDataCurtaBR(semanaBase)} a ${formatarDataCurtaBR(addDays(semanaBase, 6))}`
                   : mobileSection === "financeiro"
                     ? "Financeiro"
                     : mobileSection === "bloqueios"
@@ -865,6 +929,9 @@ export default function AdminPage() {
                         ? "Marcar horarios"
                         : "Clientes"}
               </h2>
+              {mobileSection === "cronograma" && agendaMode === "dia" && (
+                <p className="mt-1 text-sm text-[var(--muted)]">{formatWeekdayLong(dataOperacao)}</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {mobileSection !== "cronograma" && (
@@ -999,7 +1066,7 @@ export default function AdminPage() {
                     <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input w-full rounded-2xl border border-white/10 px-4 py-3 text-white" />
                     <div className="grid grid-cols-3 gap-2">
                       <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
-                      <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(addDays(today, 1))} />
+                      <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(tomorrow)} active={dataOperacao === tomorrow} />
                       <QuickFilterButton label="Semana" onClick={() => { setSemanaBase(getStartOfWeek(dataOperacao)); setView("agenda"); setAgendaMode("semana") }} />
                     </div>
                     {servicosDoDia.length > 0 && (
@@ -1432,6 +1499,8 @@ function AgendaSection({
   resumoSemana: { data: string; ativos: Agendamento[]; receita: number; personalizados: number }[]
   totalSemana: { atendimentos: number; personalizados: number; receita: number }
 }) {
+  const tomorrow = addDays(today, 1)
+
   return (
     <section className="space-y-6">
       <Panel title="Agenda" subtitle="Visao ampla do dia e da semana">
@@ -1443,7 +1512,7 @@ function AgendaSection({
           {agendaMode === "dia" ? (
             <div className="grid grid-cols-3 gap-2">
               <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
-              <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(addDays(today, 1))} />
+              <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(tomorrow)} active={dataOperacao === tomorrow} />
               <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input rounded-2xl border border-white/10 px-4 py-3" />
             </div>
           ) : (
@@ -1706,6 +1775,8 @@ function MobileScheduleSection({
   onConcluir: (item: Agendamento) => void
   onNoShow: (item: Agendamento) => void
 }) {
+  const tomorrow = addDays(today, 1)
+
   const timelineSlots = Array.from(
     new Set([
       ...slots,
@@ -1749,7 +1820,7 @@ function MobileScheduleSection({
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <QuickFilterButton label="Hoje" onClick={() => setDataOperacao(today)} active={dataOperacao === today} />
-              <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(addDays(today, 1))} />
+              <QuickFilterButton label="Amanha" onClick={() => setDataOperacao(tomorrow)} active={dataOperacao === tomorrow} />
             </div>
             <input type="date" value={dataOperacao} onChange={(e) => setDataOperacao(e.target.value)} className="datetime-input w-full min-w-0 rounded-2xl border border-white/10 px-3 py-3" />
           </div>
@@ -1834,8 +1905,8 @@ function MobileScheduleSection({
           {!loadingSemana && resumoSemana.map((dia) => (
             <div key={dia.data} className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(18,18,18,0.92)]">
               <div className="border-b border-white/10 bg-white/[0.03] px-4 py-3">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">{formatWeekday(dia.data)}</p>
-                <h3 className="mt-1 text-lg font-semibold">{formatarDataBR(dia.data)}</h3>
+                <p className="text-[11px] tracking-[0.08em] text-[var(--muted)]">{formatWeekdayLong(dia.data)}</p>
+                <h3 className="mt-1 text-lg font-semibold">{formatarDataCurtaBR(dia.data)}</h3>
               </div>
               <div className="px-4 py-3">
                 {dia.ativos.length === 0 && <p className="text-sm text-[var(--muted)]">Sem horarios marcados.</p>}
@@ -1904,6 +1975,14 @@ function BloqueiosPanel({
   todosBloqueios: Bloqueio[]
   deletarBloqueio: (id: string) => Promise<void>
 }) {
+  const bloqueiosVisiveis = [...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].sort(
+    (a, b) => {
+      const dateDiff = new Date(b.data).getTime() - new Date(a.data).getTime()
+      if (dateDiff !== 0) return dateDiff
+      return String(a.hora_inicio || "").localeCompare(String(b.hora_inicio || ""))
+    }
+  )
+
   return (
     <Panel title="Bloqueios" subtitle="Bloqueie horarios ou dias inteiros">
       <form onSubmit={criarBloqueio} className="grid gap-4">
@@ -1926,7 +2005,8 @@ function BloqueiosPanel({
         <button type="submit" className="rounded-xl bg-[var(--accent)] px-4 py-3 font-medium text-black">Criar bloqueio</button>
       </form>
       <div className="mt-6 space-y-4">
-        {[...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].map((bloqueio) => (
+        {bloqueiosVisiveis.length === 0 && <p className="text-[var(--muted)]">Nenhum bloqueio cadastrado.</p>}
+        {bloqueiosVisiveis.map((bloqueio) => (
           <div key={bloqueio.id} className="flex justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
             <div>
               <p className="text-white">{formatarDataBR(bloqueio.data)}</p>
@@ -2018,6 +2098,14 @@ function MaisSection({
   horarios: HorarioCustomizado[]
   deletarHorario: (id: string) => Promise<void>
 }) {
+  const bloqueiosVisiveis = [...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].sort(
+    (a, b) => {
+      const dateDiff = new Date(b.data).getTime() - new Date(a.data).getTime()
+      if (dateDiff !== 0) return dateDiff
+      return String(a.hora_inicio || "").localeCompare(String(b.hora_inicio || ""))
+    }
+  )
+
   return (
     <section className="space-y-6">
       <Panel title="Mais funcoes" subtitle="Acoes administrativas menos frequentes">
@@ -2052,7 +2140,8 @@ function MaisSection({
           </form>
 
           <div className="mt-6 space-y-4">
-            {[...bloqueios, ...todosBloqueios.filter((item) => item.data !== dataBloqueio)].map((bloqueio) => (
+            {bloqueiosVisiveis.length === 0 && <p className="text-[var(--muted)]">Nenhum bloqueio cadastrado.</p>}
+            {bloqueiosVisiveis.map((bloqueio) => (
               <div key={bloqueio.id} className="flex justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
                 <div>
                   <p className="text-white">{formatarDataBR(bloqueio.data)}</p>

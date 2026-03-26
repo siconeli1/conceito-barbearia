@@ -2,18 +2,18 @@ import { AGENDA_CONFIG, DAILY_SCHEDULE, filterPastSlotsForDate, generateCandidat
 
 describe('agenda scheduling', () => {
   test('daily schedule map contains correct keys', () => {
-    expect(Object.keys(DAILY_SCHEDULE).sort()).toEqual(['1', '2', '3', '4', '5'])
-    expect(AGENDA_CONFIG.openDays).toEqual([1, 2, 3, 4, 5])
+    expect(Object.keys(DAILY_SCHEDULE).sort()).toEqual(['2', '3', '4', '5', '6'])
+    expect(AGENDA_CONFIG.openDays).toEqual([2, 3, 4, 5, 6])
   })
 
   test('generateSlots returns empty for non-working day', () => {
-    expect(generateSlots(6, 40)).toEqual([])
+    expect(generateSlots(1, 40)).toEqual([])
   })
 
-  test('weekdays have lunch break and last valid start at 19:00', () => {
+  test('tuesday to friday have lunch break and start at 09:00', () => {
     const slots = generateSlots(2, 40)
 
-    expect(slots[0].hora_inicio).toBe('08:30')
+    expect(slots[0].hora_inicio).toBe('09:00')
     expect(slots.find((slot) => slot.hora_inicio === '12:00')).toBeUndefined()
     expect(slots.find((slot) => slot.hora_inicio === '14:00')).toBeDefined()
 
@@ -22,7 +22,7 @@ describe('agenda scheduling', () => {
     expect(last.hora_fim).toBe('19:40')
   })
 
-  test('60-minute service can finish exactly at 20:00', () => {
+  test('weekdays accept 19:00 as the last start regardless of service duration', () => {
     const slots = generateSlots(3, 60)
     const last = slots[slots.length - 1]
 
@@ -30,10 +30,27 @@ describe('agenda scheduling', () => {
     expect(last.hora_fim).toBe('20:00')
   })
 
+  test('saturday runs straight from 09:00 to 14:00 without lunch break', () => {
+    const slots = generateSlots(6, 40)
+
+    expect(slots[0].hora_inicio).toBe('09:00')
+    expect(slots.find((slot) => slot.hora_inicio === '12:00')).toBeDefined()
+
+    const last = slots[slots.length - 1]
+    expect(last.hora_inicio).toBe('13:20')
+    expect(last.hora_fim).toBe('14:00')
+  })
+
   test('candidate starts include exact end of another atendimento', () => {
     const starts = generateCandidateStartTimes(2, 40, [{ inicio: 510, fim: 550 }])
 
     expect(starts).toContain(550)
+  })
+
+  test('19:00 remains available on weekdays for long services', () => {
+    const starts = generateCandidateStartTimes(5, 60)
+
+    expect(starts).toContain(1140)
   })
 
   test('visible slots show fewer options while keeping a fallback per bloco', () => {
