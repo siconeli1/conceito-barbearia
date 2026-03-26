@@ -537,8 +537,10 @@ export default function AdminPage() {
           }
         }
         acc[key].total += 1
-        acc[key].receita += Number(item.valor_final ?? item.servico_preco ?? 0)
         if (item.status_agendamento === "cancelado") acc[key].cancelados += 1
+        if (item.status_agendamento !== "cancelado") {
+          acc[key].receita += Number(item.valor_final ?? item.servico_preco ?? 0)
+        }
         if (item.data > acc[key].ultData) {
           acc[key].ultData = item.data
           acc[key].nome = item.nome_cliente
